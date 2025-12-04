@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { Navigation } from "@/components/navigation";
 import { PollingProvider } from "@/lib/polling-context";
+import VersionBadge from "@/components/version-badge";
 
 const dmSans = DM_Sans({
   variable: "--font-geist-sans",
@@ -42,6 +43,7 @@ export default function RootLayout({
             <main>
               {children}
             </main>
+            <VersionBadge />
           </div>
           <Toaster />
         </PollingProvider>
