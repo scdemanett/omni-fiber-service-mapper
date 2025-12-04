@@ -137,6 +137,8 @@ export async function recordServiceabilityCheck(
       isPreSale: result.isPreSale,
       salesStatus: result.salesStatus,
       matchType: result.matchType,
+      apiCreateDate: result.apiCreateDate ? new Date(result.apiCreateDate) : null,
+      apiUpdateDate: result.apiUpdateDate ? new Date(result.apiUpdateDate) : null,
       error: error?.substring(0, 1000), // Limit error message length
     },
   });

@@ -220,8 +220,16 @@ export interface ShopperResponse {
     brand?: string;
     inputAddress?: string;
     matchType?: string;
+    createDate?: string;
+    updateDate?: string;
     matchedAddress?: {
       salesType?: string;
+      createDate?: string;
+      updateDate?: string;
+      serviceableDate?: string | null;
+      serviceableInternetDate?: string | null;
+      serviceableVideoDate?: string | null;
+      serviceablePhoneDate?: string | null;
       tags?: {
         status?: string;
         cstatus?: string;
@@ -347,6 +355,10 @@ export function isServiceable(shopperResponse: ShopperResponse): ServiceabilityR
     // serviceable boolean is true only for immediate service
     const serviceable = serviceabilityType === 'serviceable';
 
+    // Extract date fields from matchedAddress (when service was established in Omni's system)
+    const apiCreateDate = matchedAddress.createDate;
+    const apiUpdateDate = matchedAddress.updateDate;
+
     return {
       serviceable,
       serviceabilityType,
@@ -356,6 +368,8 @@ export function isServiceable(shopperResponse: ShopperResponse): ServiceabilityR
       isPreSale,
       salesStatus,
       matchType,
+      apiCreateDate,
+      apiUpdateDate,
     };
   } catch (error) {
     console.error('Error checking serviceability:', error);

@@ -26,55 +26,85 @@ export interface AddressAtTime {
 
 /**
  * Get timeline of checks for a selection
- * Returns unique dates when checks were performed
+ * Returns unique dates when service status changed (grouped by day)
+ * Uses API updateDate from matchedAddress (when status changed), not when we checked
  */
 export async function getCheckTimeline(selectionId: string): Promise<Date[]> {
-  // Get all unique check dates for this selection
+  // First, get all address IDs in this selection
+  const addresses = await prisma.address.findMany({
+    where: {
+      selections: { some: { id: selectionId } },
+    },
+    select: { id: true },
+  });
+
+  const addressIds = addresses.map(a => a.id);
+
+  // Get all checks for these addresses with API dates
   const checks = await prisma.serviceabilityCheck.findMany({
-    where: { selectionId },
-    select: { checkedAt: true },
-    distinct: ['checkedAt'],
+    where: { 
+      addressId: { in: addressIds }
+    },
+    select: { 
+      apiUpdateDate: true,
+      apiCreateDate: true,
+      checkedAt: true // Fallback if API dates are not available
+    },
     orderBy: { checkedAt: 'asc' },
   });
 
-  // Group by date (ignoring time for daily view)
+  console.log(`Timeline query: Found ${checks.length} total checks for ${addressIds.length} addresses in selection ${selectionId}`);
+
+  // Group by date using API updateDate (when status changed), fallback chain to createDate then checkedAt
   const dateMap = new Map<string, Date>();
   checks.forEach((check) => {
-    const dateKey = check.checkedAt.toISOString().split('T')[0];
+    // Use API update date if available (tracks when service status changed to available),
+    // fall back to createDate (when first planned), then to when we checked it
+    const relevantDate = check.apiUpdateDate || check.apiCreateDate || check.checkedAt;
+    const dateKey = relevantDate.toISOString().split('T')[0];
     if (!dateMap.has(dateKey)) {
-      dateMap.set(dateKey, check.checkedAt);
+      dateMap.set(dateKey, relevantDate);
     }
   });
 
-  return Array.from(dateMap.values()).sort((a, b) => a.getTime() - b.getTime());
+  const dates = Array.from(dateMap.values()).sort((a, b) => a.getTime() - b.getTime());
+  console.log(`Timeline for selection ${selectionId}: Found ${dates.length} unique days:`, dates.map(d => d.toISOString().split('T')[0]));
+  return dates;
 }
 
 /**
  * Get addresses with their status at a specific point in time
+ * Filters by when Omni Fiber changed service status (API updateDate), not when we checked
  */
 export async function getAddressesAtTime(
   selectionId: string,
   asOfDate: Date
 ): Promise<AddressAtTime[]> {
-  // Get all addresses in the selection
+  // Get all addresses in the selection with ALL their checks
   const addresses = await prisma.address.findMany({
     where: {
       selections: { some: { id: selectionId } },
     },
     include: {
       checks: {
-        where: {
-          selectionId,
-          checkedAt: { lte: asOfDate },
-        },
         orderBy: { checkedAt: 'desc' },
-        take: 1, // Get the most recent check before or at the target date
       },
     },
   });
 
   return addresses.map((addr) => {
-    const check = addr.checks[0];
+    // Filter checks to those with status changes before the target date
+    // Use apiUpdateDate if available (when service status changed),
+    // otherwise fall back to apiCreateDate, then checkedAt
+    const checksBeforeDate = addr.checks.filter(c => {
+      const relevantDate = c.apiUpdateDate || c.apiCreateDate || c.checkedAt;
+      return relevantDate <= asOfDate;
+    });
+
+    // Prefer the most recent check without an error
+    const validCheck = checksBeforeDate.find(c => !c.error || c.error === '');
+    const check = validCheck || checksBeforeDate[0];
+    
     return {
       id: addr.id,
       longitude: addr.longitude,
@@ -86,7 +116,7 @@ export async function getAddressesAtTime(
       salesType: check?.salesType || null,
       status: check?.status || null,
       cstatus: check?.cstatus || null,
-      checkedAt: check?.checkedAt || null,
+      checkedAt: check?.apiUpdateDate || check?.apiCreateDate || check?.checkedAt || null,
     };
   });
 }
@@ -100,16 +130,19 @@ export async function getSnapshotStats(
 ): Promise<TimelineSnapshot> {
   const addresses = await getAddressesAtTime(selectionId, asOfDate);
 
-  const serviceableCount = addresses.filter(
+  // Exclude addresses with errors from stats
+  const validAddresses = addresses.filter(a => !a.checkedAt || a.serviceabilityType !== null);
+
+  const serviceableCount = validAddresses.filter(
     (a) => a.serviceabilityType === 'serviceable'
   ).length;
-  const preorderCount = addresses.filter(
+  const preorderCount = validAddresses.filter(
     (a) => a.serviceabilityType === 'preorder'
   ).length;
-  const noServiceCount = addresses.filter(
+  const noServiceCount = validAddresses.filter(
     (a) => a.serviceabilityType === 'none'
   ).length;
-  const uncheckedCount = addresses.filter(
+  const uncheckedCount = validAddresses.filter(
     (a) => a.serviceabilityType === null
   ).length;
 

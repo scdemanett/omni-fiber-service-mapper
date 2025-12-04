@@ -158,6 +158,7 @@ function MapContent() {
     setIsLoadingTimeline(true);
     try {
       const dates = await getCheckTimeline(selectionId);
+      console.log(`Map: Loaded ${dates.length} timeline dates for selection ${selectionId}`, dates);
       setTimelineDates(dates);
       if (dates.length > 0) {
         setSelectedTimeIndex(dates.length - 1); // Start at most recent
@@ -260,9 +261,9 @@ function MapContent() {
 
   // Poll for updates when there's an active job and polling is enabled
   useEffect(() => {
-    if (activeJob && selectedSelectionId && pollingEnabled) {
+    if (activeJob && selectedSelectionId && pollingEnabled && !timelineEnabled) {
       pollingRef.current = setInterval(async () => {
-        // Refresh addresses
+        // Refresh addresses (only when NOT in timeline mode)
         await loadAddresses(selectedSelectionId);
         // Check if job is still active
         const job = await checkForActiveJob(selectedSelectionId);
@@ -273,6 +274,7 @@ function MapContent() {
             pollingRef.current = null;
           }
           loadSelections(); // Refresh selection stats
+          loadTimeline(selectedSelectionId); // Refresh timeline data
         }
       }, 3000); // Poll every 3 seconds for map (less frequent than checker)
 
@@ -283,11 +285,11 @@ function MapContent() {
         }
       };
     } else if (pollingRef.current) {
-      // Clear polling if it's disabled
+      // Clear polling if it's disabled or timeline is enabled
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
-  }, [activeJob, selectedSelectionId, pollingEnabled, loadAddresses, checkForActiveJob, loadSelections]);
+  }, [activeJob, selectedSelectionId, pollingEnabled, timelineEnabled, loadAddresses, checkForActiveJob, loadSelections, loadTimeline]);
 
   // Filter addresses for display
   const filteredAddresses = addresses.filter((addr) => {
@@ -405,7 +407,7 @@ function MapContent() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col">
+    <div className="flex h-[calc(100vh-4rem-1px)] flex-col overflow-hidden">
       {/* Controls Bar */}
       <div className="border-b border-border/50 bg-card/80 backdrop-blur-lg">
         <div className="container mx-auto">
@@ -504,8 +506,8 @@ function MapContent() {
       {/* Timeline Controls */}
       {timelineDates.length > 1 && (
         <div className="border-b border-border/50 bg-card/50 backdrop-blur-lg">
-          <div className="container mx-auto px-4 py-3">
-            <div className="flex items-center gap-4">
+          <div className="container mx-auto px-4 h-[60px]">
+            <div className="flex items-center gap-4 h-full">
               <div className="flex items-center gap-2">
                 <Switch
                   id="timeline-mode"
@@ -573,7 +575,7 @@ function MapContent() {
       )}
 
       {/* Map Area */}
-      <div className="relative flex-1">
+      <div className="relative flex-1 overflow-hidden">
         {isLoading ? (
           <div className="flex h-full items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -639,7 +641,7 @@ function MapContent() {
 export default function MapPage() {
   return (
     <Suspense fallback={
-      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+      <div className="flex h-[calc(100vh-4rem-1px)] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     }>
