@@ -533,8 +533,10 @@ function CheckerContent() {
                       <Pause className="h-5 w-5 text-preorder" />
                     ) : currentJob.status === 'cancelled' ? (
                       <XCircle className="h-5 w-5 text-muted-foreground" />
+                    ) : currentJob.status === 'pending' ? (
+                      <Clock className="h-5 w-5 text-primary" />
                     ) : (
-                      <AlertCircle className="h-5 w-5 text-not-serviceable" />
+                      <AlertCircle className="h-5 w-5 text-destructive" />
                     )}
                     <span className="truncate">{currentJob.name}</span>
                   </CardTitle>
