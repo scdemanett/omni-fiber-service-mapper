@@ -1,36 +1,244 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Omni Fiber Service Mapper
+
+A Next.js application for tracking and visualizing Omni Fiber internet service availability across addresses. Features include batch serviceability checking, interactive mapping with timeline playback, and progress tracking for service rollout.
+
+## Features
+
+### 🗺️ Interactive Map View
+- Color-coded markers for service status (Available, Preorder, No Service)
+- Real-time updates during batch checking
+- Timeline mode to visualize service expansion over time
+- Animated playback of service rollout progress
+- Filter by service type
+
+### ✅ Batch Serviceability Checking
+- Check thousands of addresses automatically
+- Three check modes:
+  - **Unchecked**: Only new addresses
+  - **Preorder**: Re-check addresses marked as preorder
+  - **All**: Re-validate all addresses
+- Pause/resume capability
+- Progress tracking with live updates
+- Rate-limited API calls (2 seconds between requests)
+
+### 📊 Progress Tracking
+- Track service status changes over time
+- Identify addresses that transitioned from preorder → available
+- Visualize deployment velocity
+- Historical analysis
+
+### 🎯 Address Selection & Management
+- Upload GeoJSON files with address data
+- Create filtered selections by city, region, or postcode
+- Track multiple campaigns simultaneously
+- Export results as GeoJSON
+
+### 📈 Three-Tier Classification
+- **Available Now** (Green): Service can be ordered immediately
+- **Preorder/Planned** (Yellow): Future service availability
+- **No Service** (Red): Outside service area or not planned
+
+## Tech Stack
+
+- **Framework**: Next.js 16 (App Router)
+- **Database**: SQLite with Prisma ORM
+- **UI**: React, Tailwind CSS, shadcn/ui
+- **Maps**: Leaflet.js
+- **API Integration**: Omni Fiber getCatalog API with custom decoder
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Node.js 18+ 
+- npm or pnpm
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone <your-repo-url>
+   cd omni-fiber-service-mapper
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment variables**
+   ```bash
+   cp .env.example .env
+   ```
+
+4. **Generate Prisma client**
+   ```bash
+   npx prisma generate
+   ```
+
+5. **Run database migrations**
+   ```bash
+   npx prisma migrate dev
+   ```
+
+6. **Start development server**
+   ```bash
+   npm run dev
+   ```
+
+7. **Open your browser**
+   Navigate to [http://localhost:3000](http://localhost:3000)
+
+## Usage Workflow
+
+### 1. Upload Address Data
+- Go to **Upload** page
+- Select a GeoJSON file with address features
+- Properties should include: `number`, `street`, `city`, `region`, `postcode`
+- Upload and wait for processing
+
+### 2. Create Selection
+- Go to **Selections** page
+- Choose your uploaded source
+- Filter by city or other properties
+- Create named selection/campaign
+
+### 3. Run Serviceability Checks
+- Go to **Checker** page
+- Select your campaign
+- Choose check mode (Unchecked/Preorder/All)
+- Start checking
+- Monitor progress in real-time
+
+### 4. View Results on Map
+- Go to **Map** page
+- Select your campaign
+- Toggle filters to show/hide service types
+- Enable **Timeline Mode** to see changes over time
+- Use playback controls to animate service expansion
+
+### 5. Track Progress
+- Go to **Progress** page
+- Select your campaign
+- View transition statistics
+- See which addresses changed status
+- Analyze service rollout trends
+
+## API Integration
+
+The application decodes Omni Fiber's API responses through multiple layers:
+1. Brotli decompression
+2. ROT13 cipher
+3. Custom UUdecode
+4. Optional gzip decompression
+5. JSON parsing
+
+Serviceability is determined by analyzing multiple fields:
+- `cstatus`: `schedulable`, `presales`, `future-service`
+- `status`: `SERVICEABLE`, `PLANNED`
+- `salesStatus`: `Y`, `P`
+- `matchType`: `EXACT`, `NONE`
+- `isPreSale`: `0`, `1`
+
+## Database Schema
+
+### Main Tables
+- **GeoJSONSource**: Uploaded address files
+- **Address**: Individual addresses with coordinates
+- **AddressSelection**: Named campaigns/selections
+- **ServiceabilityCheck**: Check results (preserves history)
+- **BatchJob**: Batch checking jobs with progress
+
+## Project Structure
+
+```
+src/
+├── app/
+│   ├── actions/          # Server actions
+│   │   ├── analysis.ts   # Progress tracking
+│   │   ├── dashboard.ts  # Dashboard stats
+│   │   ├── geojson.ts    # GeoJSON operations
+│   │   ├── map-timeline.ts # Map timeline data
+│   │   ├── selections.ts # Selection management
+│   │   └── stats.ts      # Navigation stats
+│   ├── api/              # API routes
+│   │   ├── batch-check/  # Batch checking
+│   │   ├── check-serviceability/ # Single check
+│   │   └── upload-geojson/ # File upload
+│   ├── checker/          # Checker page
+│   ├── map/              # Map view
+│   ├── progress/         # Progress tracking
+│   ├── selections/       # Selection management
+│   └── upload/           # File upload
+├── components/
+│   ├── ui/               # shadcn/ui components
+│   ├── navigation.tsx    # Main navigation
+│   └── service-map.tsx   # Leaflet map
+└── lib/
+    ├── batch-processor.ts # Batch logic
+    ├── db.ts             # Prisma client
+    ├── geojson-parser.ts # GeoJSON parsing
+    ├── omni-decoder.ts   # API decoder
+    └── utils.ts          # Utilities
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment Variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+See `.env.example` for required variables:
+- `DATABASE_URL`: SQLite database location
+- `NEXT_PUBLIC_BASE_URL`: Application base URL
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Development
 
-## Learn More
+### Database Migrations
+```bash
+# Create migration after schema changes
+npx prisma migrate dev --name description
 
-To learn more about Next.js, take a look at the following resources:
+# Reset database (⚠️ deletes all data)
+npx prisma migrate reset
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Open Prisma Studio to view data
+npx prisma studio
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Build for Production
+```bash
+npm run build
+npm start
+```
 
-## Deploy on Vercel
+## Features in Detail
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Timeline Mode
+- Automatically detects multiple check dates
+- Scrub through time with slider
+- Auto-animate with play button
+- See service expansion visually
+- Export data at specific points in time
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Recheck Modes
+- **Unchecked**: Standard mode for new addresses
+- **Preorder**: Target addresses awaiting service
+- **All**: Full re-validation of entire selection
+
+### Progress Tracking
+- Tracks all transitions: preorder→available, none→preorder, etc.
+- Shows recent status changes with timestamps
+- Calculates rollout statistics
+- Helps identify deployment patterns
+
+## Contributing
+
+1. Create feature branch
+2. Make changes
+3. Test thoroughly
+4. Submit pull request
+
+## License
+
+[Your License]
+
+## Support
+
+For issues or questions, please open a GitHub issue.

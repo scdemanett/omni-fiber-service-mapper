@@ -1,0 +1,682 @@
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  Activity,
+  List,
+  XCircle,
+  StopCircle,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { getSelections } from '@/app/actions/selections';
+import { Suspense } from 'react';
+
+interface Selection {
+  id: string;
+  name: string;
+  _count: { addresses: number };
+  checkedCount: number;
+  serviceableCount: number;
+  preorderCount: number;
+  noServiceCount: number;
+  uncheckedCount: number;
+}
+
+interface BatchJob {
+  id: string;
+  name: string;
+  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+  totalAddresses: number;
+  checkedCount: number;
+  serviceableCount: number;
+  preorderCount: number;
+  noServiceCount: number;
+  currentIndex: number;
+  startedAt?: string;
+  completedAt?: string;
+  lastCheckAt?: string;
+  selectionId?: string;
+}
+
+interface LogEntry {
+  id: string;
+  time: Date;
+  address: string;
+  serviceable: boolean;
+  serviceabilityType?: string;
+  status?: string;
+  error?: string;
+}
+
+function CheckerContent() {
+  const searchParams = useSearchParams();
+  const preselectedId = searchParams.get('selection');
+
+  const [selections, setSelections] = useState<Selection[]>([]);
+  const [selectedSelectionId, setSelectedSelectionId] = useState<string>(preselectedId || '');
+  const [currentJob, setCurrentJob] = useState<BatchJob | null>(null);
+  const [allJobs, setAllJobs] = useState<BatchJob[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isStarting, setIsStarting] = useState(false);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [recheckType, setRecheckType] = useState<'unchecked' | 'preorder' | 'all'>('unchecked');
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
+  const loadSelections = useCallback(async () => {
+    try {
+      const data = await getSelections();
+      setSelections(data as Selection[]);
+    } catch (error) {
+      console.error('Error loading selections:', error);
+      toast.error('Failed to load selections');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const loadJobs = useCallback(async () => {
+    try {
+      const response = await fetch('/api/batch-check');
+      const data = await response.json();
+      if (data.jobs) {
+        setAllJobs(data.jobs);
+        // Find any active job for the selected selection
+        const activeJob = data.jobs.find(
+          (j: BatchJob) => (j.status === 'running' || j.status === 'pending' || j.status === 'paused') && j.selectionId === selectedSelectionId
+        );
+        if (activeJob) {
+          setCurrentJob(activeJob);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading jobs:', error);
+    }
+  }, [selectedSelectionId]);
+
+  useEffect(() => {
+    loadSelections();
+    loadJobs();
+  }, [loadSelections, loadJobs]);
+
+  useEffect(() => {
+    if (preselectedId) {
+      setSelectedSelectionId(preselectedId);
+    }
+  }, [preselectedId]);
+
+  // Poll for job status when running or pending
+  useEffect(() => {
+    if (currentJob?.status === 'running' || currentJob?.status === 'pending') {
+      pollingRef.current = setInterval(async () => {
+        try {
+          const response = await fetch('/api/batch-check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'status', jobId: currentJob.id }),
+          });
+          const data = await response.json();
+          if (data.job) {
+            setCurrentJob(data.job);
+            // Update activity logs
+            if (data.logs) {
+              setLogs(data.logs.map((log: { id: string; address: string; serviceable: boolean; status?: string; time: string }) => ({
+                ...log,
+                time: new Date(log.time),
+              })));
+            }
+            // Stop polling when job is completed, cancelled, or failed
+            if (data.job.status !== 'running' && data.job.status !== 'pending') {
+              if (pollingRef.current) {
+                clearInterval(pollingRef.current);
+              }
+              loadSelections(); // Refresh selection stats
+              loadJobs(); // Refresh job list
+            }
+          }
+        } catch (error) {
+          console.error('Error polling job status:', error);
+        }
+      }, 2000);
+
+      return () => {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+        }
+      };
+    }
+  }, [currentJob?.id, currentJob?.status, loadSelections, loadJobs]);
+
+  const handleStart = async () => {
+    if (!selectedSelectionId) {
+      toast.error('Please select a selection first');
+      return;
+    }
+
+    const selection = selections.find((s) => s.id === selectedSelectionId);
+    if (!selection) return;
+
+    // Check if there's already a running or pending job
+    const activeJob = allJobs.find(
+      (j) => (j.status === 'running' || j.status === 'pending') && j.selectionId === selectedSelectionId
+    );
+    if (activeJob) {
+      toast.error('A job is already in progress for this selection');
+      setCurrentJob(activeJob);
+      return;
+    }
+
+    setIsStarting(true);
+    setLogs([]);
+
+    try {
+      const response = await fetch('/api/batch-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'start',
+          selectionId: selectedSelectionId,
+          name: `${selection.name} - ${new Date().toLocaleString()}`,
+          recheckType,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success && data.job) {
+        setCurrentJob(data.job);
+        toast.success('Batch checking started');
+      } else {
+        toast.error(data.error || 'Failed to start batch check');
+      }
+    } catch (error) {
+      console.error('Error starting batch check:', error);
+      toast.error('Failed to start batch check');
+    } finally {
+      setIsStarting(false);
+    }
+  };
+
+  const handlePause = async () => {
+    if (!currentJob) return;
+
+    try {
+      const response = await fetch('/api/batch-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'pause', jobId: currentJob.id }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setCurrentJob(data.job);
+        toast.success('Batch checking paused');
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+        }
+      } else {
+        toast.error(data.error || 'Failed to pause');
+      }
+    } catch (error) {
+      console.error('Error pausing batch check:', error);
+      toast.error('Failed to pause');
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!currentJob) return;
+
+    try {
+      const response = await fetch('/api/batch-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel', jobId: currentJob.id }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setCurrentJob(data.job);
+        toast.success('Batch checking cancelled');
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+        }
+        loadSelections();
+        loadJobs();
+      } else {
+        toast.error(data.error || 'Failed to cancel');
+      }
+    } catch (error) {
+      console.error('Error cancelling batch check:', error);
+      toast.error('Failed to cancel');
+    }
+  };
+
+  const handleResume = async () => {
+    if (!currentJob) return;
+
+    try {
+      const response = await fetch('/api/batch-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resume', jobId: currentJob.id }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setCurrentJob(data.job);
+        toast.success('Batch checking resumed');
+      } else {
+        toast.error(data.error || 'Failed to resume');
+      }
+    } catch (error) {
+      console.error('Error resuming batch check:', error);
+      toast.error('Failed to resume');
+    }
+  };
+
+  const selectedSelection = selections.find((s) => s.id === selectedSelectionId);
+  const progress = currentJob
+    ? (currentJob.checkedCount / currentJob.totalAddresses) * 100
+    : 0;
+
+  // Check if there's an active (running, pending, or paused) job for the selected selection
+  const activeJobForSelection = allJobs.find(
+    (j) => (j.status === 'running' || j.status === 'pending' || j.status === 'paused') && j.selectionId === selectedSelectionId
+  );
+  const isJobActive = currentJob && (currentJob.status === 'running' || currentJob.status === 'paused' || currentJob.status === 'pending');
+  const canStartNew = !isJobActive && !activeJobForSelection;
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold tracking-tight">Serviceability Checker</h1>
+        <p className="mt-2 text-muted-foreground">
+          Run batch serviceability checks against the Omni Fiber API
+        </p>
+      </div>
+
+      <div className="grid gap-8 lg:grid-cols-3">
+        {/* Controls */}
+        <div className="space-y-6 lg:col-span-1">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                Batch Controls
+              </CardTitle>
+              <CardDescription>Select a campaign and start checking</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Selection</label>
+                <Select
+                  value={selectedSelectionId}
+                  onValueChange={(value) => {
+                    setSelectedSelectionId(value);
+                    // Check if there's an active job for this selection
+                    const activeJob = allJobs.find(
+                      (j) => (j.status === 'running' || j.status === 'paused' || j.status === 'pending') && j.selectionId === value
+                    );
+                    if (activeJob) {
+                      setCurrentJob(activeJob);
+                    } else {
+                      setCurrentJob(null);
+                    }
+                  }}
+                  disabled={currentJob?.status === 'running'}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a campaign" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selections.map((selection) => (
+                      <SelectItem key={selection.id} value={selection.id}>
+                        {selection.name} ({selection.uncheckedCount.toLocaleString()} pending)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedSelection && (
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-muted p-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Total addresses</span>
+                      <span className="font-medium">
+                        {selectedSelection._count.addresses.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Unchecked</span>
+                      <span className="font-medium text-unchecked">
+                        {selectedSelection.uncheckedCount.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Available Now</span>
+                      <span className="font-medium text-serviceable">
+                        {selectedSelection.serviceableCount.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Preorder</span>
+                      <span className="font-medium text-preorder">
+                        {selectedSelection.preorderCount.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">No Service</span>
+                      <span className="font-medium text-no-service">
+                        {selectedSelection.noServiceCount.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Check Mode</label>
+                    <Select value={recheckType} onValueChange={(value: 'unchecked' | 'preorder' | 'all') => setRecheckType(value)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unchecked">
+                          Only Unchecked ({selectedSelection.uncheckedCount})
+                        </SelectItem>
+                        <SelectItem value="preorder">
+                          Re-check Preorder ({selectedSelection.preorderCount})
+                        </SelectItem>
+                        <SelectItem value="all">
+                          Re-check All ({selectedSelection._count.addresses})
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {recheckType === 'preorder' && (
+                      <p className="text-xs text-muted-foreground">
+                        Re-checks addresses that were marked as preorder to see if they're now available
+                      </p>
+                    )}
+                    {recheckType === 'all' && (
+                      <p className="text-xs text-muted-foreground">
+                        Warning: This will re-check all addresses, including those already checked
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2">
+                {canStartNew ? (
+                  <Button
+                    onClick={handleStart}
+                    disabled={!selectedSelectionId || isStarting || isLoading || 
+                      (recheckType === 'unchecked' && selectedSelection?.uncheckedCount === 0) ||
+                      (recheckType === 'preorder' && selectedSelection?.preorderCount === 0) ||
+                      (recheckType === 'all' && selectedSelection?._count.addresses === 0)}
+                    className="w-full"
+                  >
+                    {isStarting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Starting...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="mr-2 h-4 w-4" />
+                        Start Checking
+                      </>
+                    )}
+                  </Button>
+                ) : currentJob?.status === 'running' || currentJob?.status === 'pending' ? (
+                  <div className="flex gap-2">
+                    <Button onClick={handlePause} variant="outline" className="flex-1">
+                      <Pause className="mr-2 h-4 w-4" />
+                      Pause
+                    </Button>
+                    <Button onClick={handleCancel} variant="destructive" className="flex-1">
+                      <StopCircle className="mr-2 h-4 w-4" />
+                      Cancel
+                    </Button>
+                  </div>
+                ) : currentJob?.status === 'paused' ? (
+                  <div className="flex gap-2">
+                    <Button onClick={handleResume} className="flex-1">
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      Resume
+                    </Button>
+                    <Button onClick={handleCancel} variant="destructive" className="flex-1">
+                      <StopCircle className="mr-2 h-4 w-4" />
+                      Cancel
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Recent Jobs */}
+          {allJobs.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Recent Jobs</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[200px]">
+                  <div className="space-y-2">
+                    {allJobs.slice(0, 10).map((job) => (
+                      <div
+                        key={job.id}
+                        className={`flex items-center justify-between rounded-lg border p-2 text-xs ${
+                          currentJob?.id === job.id ? 'border-primary bg-primary/5' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          {job.status === 'running' ? (
+                            <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                          ) : job.status === 'completed' ? (
+                            <CheckCircle className="h-3 w-3 text-serviceable" />
+                          ) : job.status === 'paused' ? (
+                            <Pause className="h-3 w-3 text-preorder" />
+                          ) : job.status === 'cancelled' ? (
+                            <XCircle className="h-3 w-3 text-muted-foreground" />
+                          ) : job.status === 'pending' ? (
+                            <Clock className="h-3 w-3 text-muted-foreground" />
+                          ) : job.status === 'failed' ? (
+                            <AlertCircle className="h-3 w-3 text-not-serviceable" />
+                          ) : (
+                            <Clock className="h-3 w-3 text-muted-foreground" />
+                          )}
+                          <span className="truncate">{job.name}</span>
+                        </div>
+                        <Badge variant="outline" className="text-[10px]">
+                          {job.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Status & Logs */}
+        <div className="space-y-6 lg:col-span-2">
+          {currentJob && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    {currentJob.status === 'running' ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    ) : currentJob.status === 'completed' ? (
+                      <CheckCircle className="h-5 w-5 text-serviceable" />
+                    ) : currentJob.status === 'paused' ? (
+                      <Pause className="h-5 w-5 text-preorder" />
+                    ) : currentJob.status === 'cancelled' ? (
+                      <XCircle className="h-5 w-5 text-muted-foreground" />
+                    ) : (
+                      <AlertCircle className="h-5 w-5 text-not-serviceable" />
+                    )}
+                    <span className="truncate">{currentJob.name}</span>
+                  </CardTitle>
+                  <Badge
+                    variant={
+                      currentJob.status === 'running'
+                        ? 'default'
+                        : currentJob.status === 'completed'
+                        ? 'outline'
+                        : currentJob.status === 'cancelled'
+                        ? 'secondary'
+                        : 'secondary'
+                    }
+                  >
+                    {currentJob.status}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Progress</span>
+                    <span className="font-medium">
+                      {currentJob.checkedCount.toLocaleString()} /{' '}
+                      {currentJob.totalAddresses.toLocaleString()}
+                    </span>
+                  </div>
+                  <Progress value={progress} className="h-3" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg bg-muted p-3 text-center">
+                    <div className="text-2xl font-bold text-serviceable">
+                      {currentJob.serviceableCount.toLocaleString()}
+                    </div>
+                    <div className="text-xs uppercase text-muted-foreground">Available Now</div>
+                  </div>
+                  <div className="rounded-lg bg-muted p-3 text-center">
+                    <div className="text-2xl font-bold text-preorder">
+                      {currentJob.preorderCount.toLocaleString()}
+                    </div>
+                    <div className="text-xs uppercase text-muted-foreground">Preorder</div>
+                  </div>
+                  <div className="rounded-lg bg-muted p-3 text-center">
+                    <div className="text-2xl font-bold text-no-service">
+                      {currentJob.noServiceCount.toLocaleString()}
+                    </div>
+                    <div className="text-xs uppercase text-muted-foreground">No Service</div>
+                  </div>
+                  <div className="rounded-lg bg-muted p-3 text-center">
+                    <div className="text-2xl font-bold text-unchecked">
+                      {(currentJob.totalAddresses - currentJob.checkedCount).toLocaleString()}
+                    </div>
+                    <div className="text-xs uppercase text-muted-foreground">Remaining</div>
+                  </div>
+                </div>
+
+                {currentJob.status === 'running' && (
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>
+                      Checking addresses... (~2 seconds per address)
+                    </span>
+                  </div>
+                )}
+
+                {currentJob.status === 'paused' && (
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <Pause className="h-4 w-4" />
+                    <span>Job paused. Click Resume to continue.</span>
+                  </div>
+                )}
+
+                {currentJob.status === 'cancelled' && (
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <XCircle className="h-4 w-4" />
+                    <span>Job cancelled. Start a new job to continue checking.</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Activity Log */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <List className="h-5 w-5" />
+                Activity Log
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {logs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                  <Clock className="h-8 w-8 opacity-50" />
+                  <p className="mt-2">No activity yet</p>
+                  <p className="text-sm">Start a batch check to see results here</p>
+                </div>
+              ) : (
+                <ScrollArea className="h-[300px]">
+                  <div className="space-y-2">
+                    {logs.map((log) => (
+                      <div
+                        key={log.id}
+                        className="flex items-center gap-3 rounded-lg border p-3 text-sm"
+                      >
+                        {log.serviceabilityType === 'serviceable' ? (
+                          <CheckCircle className="h-4 w-4 text-serviceable" />
+                        ) : log.serviceabilityType === 'preorder' ? (
+                          <Clock className="h-4 w-4 text-preorder" />
+                        ) : log.serviceabilityType === 'none' ? (
+                          <XCircle className="h-4 w-4 text-no-service" />
+                        ) : (
+                          <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                        )}
+                        <div className="flex-1 truncate font-mono text-xs">{log.address}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {log.time.toLocaleTimeString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function CheckerPage() {
+  return (
+    <Suspense fallback={
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    }>
+      <CheckerContent />
+    </Suspense>
+  );
+}
