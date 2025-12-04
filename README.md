@@ -162,6 +162,7 @@ npx prisma migrate reset  # ⚠️ Deletes all data
 - Go to **Upload** page
 - Select a GeoJSON file with address features
 - Properties should include: `number`, `street`, `city`, `region`, `postcode`
+- **Recommended Source**: [OpenAddress.io](https://openaddress.io/) provides free, open address data in compatible formats
 - Upload and wait for processing
 
 ### 2. Create Selection
@@ -323,6 +324,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - UI components from [shadcn/ui](https://ui.shadcn.com/)
 - Maps powered by [Leaflet](https://leafletjs.com/)
 - Database with [Prisma](https://www.prisma.io/)
+- Address data support for [OpenAddress](https://openaddress.io/) - free, open global address data
 
 ## Support
 
