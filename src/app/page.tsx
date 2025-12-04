@@ -17,7 +17,6 @@ import {
   Loader2,
   Pause,
   XCircle,
-  TrendingUp,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -88,8 +87,8 @@ export default function Dashboard() {
   }
 
   const serviceableRate =
-    stats.totalChecks > 0
-      ? ((stats.serviceableChecks / stats.totalChecks) * 100).toFixed(1)
+    stats.totalCheckedAddresses > 0
+      ? ((stats.serviceableChecks / stats.totalCheckedAddresses) * 100).toFixed(1)
       : '0';
 
   return (
@@ -133,13 +132,13 @@ export default function Dashboard() {
           <Card className="bg-gradient-to-br from-card to-card/80">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Checks Performed
+                Addresses Checked
               </CardTitle>
               <Activity className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{stats.totalChecks.toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground">serviceability checks</p>
+              <div className="text-3xl font-bold">{stats.totalCheckedAddresses.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground">{stats.totalChecks.toLocaleString()} total checks</p>
             </CardContent>
           </Card>
 
@@ -154,7 +153,7 @@ export default function Dashboard() {
               <div className="text-3xl font-bold text-serviceable">
                 {stats.serviceableChecks.toLocaleString()}
               </div>
-              <p className="text-xs text-muted-foreground">{serviceableRate}% of checked</p>
+              <p className="text-xs text-muted-foreground">{serviceableRate}% of addresses</p>
             </CardContent>
           </Card>
 
@@ -275,21 +274,6 @@ export default function Dashboard() {
                 <Button variant="outline" className="justify-start" disabled>
                   <Map className="mr-2 h-4 w-4" />
                   View Map
-                  <Lock className="ml-auto h-3 w-3 text-muted-foreground" />
-                </Button>
-              )}
-              
-              {stats.selections.length > 0 ? (
-                <Button asChild variant="outline" className="justify-start">
-                  <Link href="/progress">
-                    <TrendingUp className="mr-2 h-4 w-4" />
-                    View Progress
-                  </Link>
-                </Button>
-              ) : (
-                <Button variant="outline" className="justify-start" disabled>
-                  <TrendingUp className="mr-2 h-4 w-4" />
-                  View Progress
                   <Lock className="ml-auto h-3 w-3 text-muted-foreground" />
                 </Button>
               )}

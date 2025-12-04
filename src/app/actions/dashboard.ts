@@ -22,6 +22,7 @@ export interface DashboardStats {
   }[];
   totalAddresses: number;
   totalChecks: number;
+  totalCheckedAddresses: number;
   serviceableChecks: number;
   preorderChecks: number;
   noServiceChecks: number;
@@ -80,6 +81,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   ).length;
   const noServiceChecks = allAddresses.filter(
     (a) => a.checks[0]?.serviceabilityType === 'none' && !a.checks[0]?.error
+  ).length;
+  
+  // Count unique addresses that have been checked (for accurate percentages)
+  const totalCheckedAddresses = allAddresses.filter(
+    (a) => a.checks.length > 0 && !a.checks[0]?.error
   ).length;
 
   // Check for active jobs
@@ -148,6 +154,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       selections: selectionsWithStats,
       totalAddresses,
       totalChecks,
+      totalCheckedAddresses,
       serviceableChecks,
       preorderChecks,
       noServiceChecks,
@@ -162,6 +169,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       selections: [],
       totalAddresses: 0,
       totalChecks: 0,
+      totalCheckedAddresses: 0,
       serviceableChecks: 0,
       preorderChecks: 0,
       noServiceChecks: 0,

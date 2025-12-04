@@ -10,7 +10,6 @@ import {
   Map,
   LayoutDashboard,
   Lock,
-  TrendingUp,
   Globe,
   Activity,
 } from 'lucide-react';
@@ -96,13 +95,6 @@ export function Navigation() {
       href: '/map', 
       label: 'Map', 
       icon: Map,
-      enabled: stats.hasSelections,
-      disabledReason: 'Create a selection first',
-    },
-    { 
-      href: '/progress', 
-      label: 'Progress', 
-      icon: TrendingUp,
       enabled: stats.hasSelections,
       disabledReason: 'Create a selection first',
     },

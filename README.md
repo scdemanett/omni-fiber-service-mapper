@@ -41,36 +41,34 @@ Visit [http://localhost:3000](http://localhost:3000) to get started!
 ### Batch Serviceability Checker
 ![Batch checker interface with progress tracking and pause/resume controls](screenshots/checker.jpg)
 
-### Interactive Map
+### Interactive Map with Timeline
 ![Interactive map with color-coded service availability markers and filtering options](screenshots/map.jpg)
-
-### Progress Tracking
-![Progress tracking page showing service status changes and transition statistics](screenshots/progress.jpg)
 
 ## Features
 
-### 🗺️ Interactive Map View
+### 🗺️ Interactive Map View with Timeline
 - Color-coded markers for service status (Available, Preorder, No Service)
 - Real-time updates during batch checking
-- Timeline mode to visualize service expansion over time
-- Animated playback of service rollout progress
+- **Timeline mode** to visualize service expansion over time
+  - Based on Omni Fiber API dates (when service was established)
+  - Animated playback of service rollout progression
+  - Scrub through historical snapshots
+  - See exactly when addresses became serviceable
 - Filter by service type
+- Export to GeoJSON
 
 ### ✅ Batch Serviceability Checking
 - Check thousands of addresses automatically
-- Three check modes:
+- Five check modes:
   - **Unchecked**: Only new addresses
   - **Preorder**: Re-check addresses marked as preorder
+  - **No Service**: Re-check addresses with no service
+  - **Errors**: Re-check addresses that had API errors
   - **All**: Re-validate all addresses
 - Pause/resume capability
-- Progress tracking with live updates
+- Live progress tracking
+- Smart error handling (errors don't pollute data)
 - Rate-limited API calls (2 seconds between requests)
-
-### 📊 Progress Tracking
-- Track service status changes over time
-- Identify addresses that transitioned from preorder → available
-- Visualize deployment velocity
-- Historical analysis
 
 ### 🎯 Address Selection & Management
 - Upload GeoJSON files with address data
@@ -183,15 +181,12 @@ npx prisma migrate reset  # ⚠️ Deletes all data
 - Go to **Map** page
 - Select your campaign
 - Toggle filters to show/hide service types
-- Enable **Timeline Mode** to see changes over time
-- Use playback controls to animate service expansion
-
-### 5. Track Progress
-- Go to **Progress** page
-- Select your campaign
-- View transition statistics
-- See which addresses changed status
-- Analyze service rollout trends
+- Enable **Timeline Mode** to see service rollout history
+  - Scrub through time using the slider
+  - Play animation of service expansion
+  - Dates based on when Omni Fiber established service (API dates)
+  - Track exactly when addresses became serviceable
+- Export filtered results as GeoJSON
 
 ## API Integration
 
@@ -224,7 +219,6 @@ Serviceability is determined by analyzing multiple fields:
 src/
 ├── app/
 │   ├── actions/          # Server actions
-│   │   ├── analysis.ts   # Progress tracking
 │   │   ├── dashboard.ts  # Dashboard stats
 │   │   ├── geojson.ts    # GeoJSON operations
 │   │   ├── map-timeline.ts # Map timeline data
@@ -235,8 +229,7 @@ src/
 │   │   ├── check-serviceability/ # Single check
 │   │   └── upload-geojson/ # File upload
 │   ├── checker/          # Checker page
-│   ├── map/              # Map view
-│   ├── progress/         # Progress tracking
+│   ├── map/              # Map view with timeline
 │   ├── selections/       # Selection management
 │   └── upload/           # File upload
 ├── components/
@@ -296,11 +289,12 @@ npm start
 - **Preorder**: Target addresses awaiting service
 - **All**: Full re-validation of entire selection
 
-### Progress Tracking
-- Tracks all transitions: preorder→available, none→preorder, etc.
-- Shows recent status changes with timestamps
-- Calculates rollout statistics
-- Helps identify deployment patterns
+### Map Timeline
+- Visualizes service rollout using Omni Fiber API dates
+- Shows when addresses were added and when they became serviceable
+- Animated playback through historical snapshots
+- Groups changes by day for easy tracking
+- Helps identify deployment patterns and expansion progress
 
 ## Contributing
 
