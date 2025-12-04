@@ -2,6 +2,31 @@
 
 A Next.js application for tracking and visualizing Omni Fiber internet service availability across addresses. Features include batch serviceability checking, interactive mapping with timeline playback, and progress tracking for service rollout.
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
+
+## ⚡ Quick Start
+
+```bash
+# Clone and setup
+git clone <your-repo-url>
+cd omni-fiber-service-mapper
+npm install
+
+# Setup environment
+cp .env.example .env
+
+# Setup database
+npx prisma generate
+npx prisma migrate dev
+
+# Start development server
+npm run dev
+```
+
+Visit [http://localhost:3000](http://localhost:3000) to get started!
+
 ## Features
 
 ### 🗺️ Interactive Map View
@@ -55,39 +80,63 @@ A Next.js application for tracking and visualizing Omni Fiber internet service a
 
 ### Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone <your-repo-url>
-   cd omni-fiber-service-mapper
-   ```
+Follow these steps to set up the project:
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+#### 1️⃣ Clone and Install
+```bash
+git clone <your-repo-url>
+cd omni-fiber-service-mapper
+npm install
+```
 
-3. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   ```
+#### 2️⃣ Configure Environment
+```bash
+# Copy the example environment file
+cp .env.example .env
 
-4. **Generate Prisma client**
-   ```bash
-   npx prisma generate
-   ```
+# Edit .env if needed (default values work for local development)
+```
 
-5. **Run database migrations**
-   ```bash
-   npx prisma migrate dev
-   ```
+**Environment Variables** (see `.env.example`):
+- `DATABASE_URL` - SQLite database location (default: `file:./dev.db`)
+- `NEXT_PUBLIC_BASE_URL` - Application URL (default: `http://localhost:3000`)
+- `NODE_ENV` - Environment mode (development/production)
 
-6. **Start development server**
-   ```bash
-   npm run dev
-   ```
+#### 3️⃣ Setup Database
+```bash
+# Generate Prisma client from schema
+npx prisma generate
 
-7. **Open your browser**
-   Navigate to [http://localhost:3000](http://localhost:3000)
+# Run migrations to create database schema
+npx prisma migrate dev
+```
+
+This creates a SQLite database at `prisma/dev.db` with all required tables.
+
+#### 4️⃣ Start Development Server
+```bash
+npm run dev
+```
+
+#### 5️⃣ Access Application
+Navigate to [http://localhost:3000](http://localhost:3000)
+
+### Troubleshooting Setup
+
+**Issue: Prisma client errors**
+```bash
+npx prisma generate
+```
+
+**Issue: Database out of sync**
+```bash
+npx prisma migrate reset  # ⚠️ Deletes all data
+```
+
+**Issue: Port already in use**
+```bash
+# Edit .env and change PORT=3001
+```
 
 ## Usage Workflow
 
@@ -182,11 +231,16 @@ src/
     └── utils.ts          # Utilities
 ```
 
-## Environment Variables
+## Configuration Files
 
-See `.env.example` for required variables:
-- `DATABASE_URL`: SQLite database location
-- `NEXT_PUBLIC_BASE_URL`: Application base URL
+### Environment Variables
+- `.env.example` - Template with all required variables
+- `.env` - Your local environment (git-ignored, create from example)
+
+### Prisma
+- `prisma/schema.prisma` - Database schema definition
+- `prisma.config.ts` - Prisma configuration
+- `prisma/migrations/` - Database migration history
 
 ## Development
 
@@ -230,15 +284,43 @@ npm start
 
 ## Contributing
 
-1. Create feature branch
-2. Make changes
-3. Test thoroughly
-4. Submit pull request
+Contributions are welcome! Here's how to get started:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes and test thoroughly
+4. Commit your changes (`git commit -m 'Add amazing feature'`)
+5. Push to the branch (`git push origin feature/amazing-feature`)
+6. Open a Pull Request
+
+Please ensure:
+- Code follows existing style conventions
+- All TypeScript types are properly defined
+- Build passes (`npm run build`)
+- Features are tested in both light and dark modes
 
 ## License
 
-[Your License]
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- Built with [Next.js](https://nextjs.org/)
+- UI components from [shadcn/ui](https://ui.shadcn.com/)
+- Maps powered by [Leaflet](https://leafletjs.com/)
+- Database with [Prisma](https://www.prisma.io/)
 
 ## Support
 
-For issues or questions, please open a GitHub issue.
+For issues, questions, or feature requests:
+- Open a [GitHub Issue](../../issues)
+- Check existing issues before creating new ones
+- Provide detailed information for bug reports
+
+## Author
+
+**Steven Demanett**
+
+---
+
+**Note**: This is an unofficial tool for analyzing Omni Fiber service availability. Not affiliated with or endorsed by Omni Fiber.

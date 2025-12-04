@@ -12,6 +12,7 @@ import {
   Lock,
   TrendingUp,
   Globe,
+  Activity,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getNavStats } from '@/app/actions/stats';
@@ -21,6 +22,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { Switch } from '@/components/ui/switch';
+import { usePolling } from '@/lib/polling-context';
 
 interface NavStats {
   hasSources: boolean;
@@ -31,6 +34,7 @@ interface NavStats {
 
 export function Navigation() {
   const pathname = usePathname();
+  const { pollingEnabled, setPollingEnabled } = usePolling();
   const [stats, setStats] = useState<NavStats>({
     hasSources: false,
     hasSelections: false,
@@ -107,8 +111,8 @@ export function Navigation() {
               href="/" 
               className="flex items-center gap-3 transition-opacity hover:opacity-80"
             >
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-                <Globe className="h-5 w-5 text-primary-foreground" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary">
+                <Globe className="h-6 w-6 text-primary-foreground" />
               </div>
               <div className="flex flex-col">
                 <span className="text-sm font-semibold tracking-tight">
@@ -120,7 +124,33 @@ export function Navigation() {
               </div>
             </Link>
 
-            <nav className="flex items-center gap-1">
+            <div className="flex items-center gap-4">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="global-polling"
+                      checked={pollingEnabled}
+                      onCheckedChange={setPollingEnabled}
+                      className="data-[state=checked]:bg-primary"
+                    />
+                    <label
+                      htmlFor="global-polling"
+                      className="flex cursor-pointer items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <Activity className={cn("h-3.5 w-3.5", pollingEnabled && "text-primary")} />
+                      <span className="hidden sm:inline">Live Updates</span>
+                    </label>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{pollingEnabled ? 'Disable' : 'Enable'} automatic polling on all pages</p>
+                </TooltipContent>
+              </Tooltip>
+
+              <div className="h-8 w-px bg-border" />
+
+              <nav className="flex items-center gap-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
@@ -161,7 +191,8 @@ export function Navigation() {
                   </Link>
                 );
               })}
-            </nav>
+              </nav>
+            </div>
           </div>
         </div>
       </header>

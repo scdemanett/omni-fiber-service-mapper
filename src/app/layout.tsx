@@ -3,6 +3,7 @@ import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { Navigation } from "@/components/navigation";
+import { PollingProvider } from "@/lib/polling-context";
 
 const dmSans = DM_Sans({
   variable: "--font-geist-sans",
@@ -31,13 +32,15 @@ export default function RootLayout({
       <body
         className={`${dmSans.variable} ${jetbrainsMono.variable} antialiased min-h-screen`}
       >
-        <div className="flex min-h-screen flex-col">
-          <Navigation />
-          <main className="flex-1">
-            {children}
-          </main>
-        </div>
-        <Toaster />
+        <PollingProvider>
+          <div className="flex min-h-screen flex-col">
+            <Navigation />
+            <main>
+              {children}
+            </main>
+          </div>
+          <Toaster />
+        </PollingProvider>
       </body>
     </html>
   );

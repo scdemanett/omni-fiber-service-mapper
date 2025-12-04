@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/select';
 import { getSelections } from '@/app/actions/selections';
 import { Suspense } from 'react';
+import { usePolling } from '@/lib/polling-context';
 
 interface Selection {
   id: string;
@@ -71,6 +72,7 @@ interface LogEntry {
 function CheckerContent() {
   const searchParams = useSearchParams();
   const preselectedId = searchParams.get('selection');
+  const { pollingEnabled } = usePolling();
 
   const [selections, setSelections] = useState<Selection[]>([]);
   const [selectedSelectionId, setSelectedSelectionId] = useState<string>(preselectedId || '');
@@ -124,9 +126,9 @@ function CheckerContent() {
     }
   }, [preselectedId]);
 
-  // Poll for job status when running or pending
+  // Poll for job status when running or pending and polling is enabled
   useEffect(() => {
-    if (currentJob?.status === 'running' || currentJob?.status === 'pending') {
+    if ((currentJob?.status === 'running' || currentJob?.status === 'pending') && pollingEnabled) {
       pollingRef.current = setInterval(async () => {
         try {
           const response = await fetch('/api/batch-check', {
@@ -163,8 +165,12 @@ function CheckerContent() {
           clearInterval(pollingRef.current);
         }
       };
+    } else if (pollingRef.current) {
+      // Clear polling if it's disabled
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
     }
-  }, [currentJob?.id, currentJob?.status, loadSelections, loadJobs]);
+  }, [currentJob?.id, currentJob?.status, pollingEnabled, loadSelections, loadJobs]);
 
   const handleStart = async () => {
     if (!selectedSelectionId) {

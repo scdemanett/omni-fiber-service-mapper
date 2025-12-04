@@ -22,6 +22,7 @@ import { Switch } from '@/components/ui/switch';
 import { getSelections, getSelectionAddresses } from '@/app/actions/selections';
 import { getCheckTimeline, getAddressesAtTime, getSnapshotStats, type AddressAtTime } from '@/app/actions/map-timeline';
 import { format } from 'date-fns';
+import { usePolling } from '@/lib/polling-context';
 
 interface BatchJob {
   id: string;
@@ -68,6 +69,7 @@ function MapContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const preselectedId = searchParams.get('selection');
+  const { pollingEnabled } = usePolling();
   
   // Read filter state from URL
   const urlShowServiceable = searchParams.get('serviceable');
@@ -256,9 +258,9 @@ function MapContent() {
     }
   }, [timelineEnabled, selectedTimeIndex, timelineDates, selectedSelectionId, loadAddressesAtTime, loadAddresses]);
 
-  // Poll for updates when there's an active job
+  // Poll for updates when there's an active job and polling is enabled
   useEffect(() => {
-    if (activeJob && selectedSelectionId) {
+    if (activeJob && selectedSelectionId && pollingEnabled) {
       pollingRef.current = setInterval(async () => {
         // Refresh addresses
         await loadAddresses(selectedSelectionId);
@@ -280,8 +282,12 @@ function MapContent() {
           pollingRef.current = null;
         }
       };
+    } else if (pollingRef.current) {
+      // Clear polling if it's disabled
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
     }
-  }, [activeJob, selectedSelectionId, loadAddresses, checkForActiveJob, loadSelections]);
+  }, [activeJob, selectedSelectionId, pollingEnabled, loadAddresses, checkForActiveJob, loadSelections]);
 
   // Filter addresses for display
   const filteredAddresses = addresses.filter((addr) => {
@@ -424,10 +430,16 @@ function MapContent() {
               </SelectContent>
             </Select>
 
-            {activeJob && (
+            {activeJob && pollingEnabled && (
               <Badge variant="outline" className="animate-pulse gap-1.5 border-primary text-primary">
                 <Activity className="h-3 w-3" />
                 Live updating
+              </Badge>
+            )}
+            {activeJob && !pollingEnabled && (
+              <Badge variant="outline" className="gap-1.5 border-muted-foreground/50 text-muted-foreground">
+                <Activity className="h-3 w-3" />
+                Updates paused
               </Badge>
             )}
 

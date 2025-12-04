@@ -25,10 +25,12 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { formatDistanceToNow } from 'date-fns';
 import { getDashboardStats, type DashboardStats } from '@/app/actions/dashboard';
+import { usePolling } from '@/lib/polling-context';
 
 export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { pollingEnabled } = usePolling();
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadStats = useCallback(async () => {
@@ -49,9 +51,9 @@ export default function Dashboard() {
     loadStats();
   }, [loadStats]);
 
-  // Poll when there are active jobs
+  // Poll when there are active jobs and polling is enabled
   useEffect(() => {
-    if (stats?.hasActiveJobs) {
+    if (stats?.hasActiveJobs && pollingEnabled) {
       pollingRef.current = setInterval(async () => {
         const stillActive = await loadStats();
         if (!stillActive && pollingRef.current) {
@@ -66,14 +68,18 @@ export default function Dashboard() {
           pollingRef.current = null;
         }
       };
+    } else if (pollingRef.current) {
+      // Clear polling if it's disabled
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
     }
-  }, [stats?.hasActiveJobs, loadStats]);
+  }, [stats?.hasActiveJobs, pollingEnabled, loadStats]);
 
   if (isLoading || !stats) {
     return (
-      <div className="min-h-screen bg-grid-pattern">
+      <div className="bg-grid-pattern" style={{ minHeight: 'calc(100vh - 65px)' }}>
         <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center justify-center py-16">
+          <div className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 12rem)' }}>
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         </div>
@@ -87,7 +93,7 @@ export default function Dashboard() {
       : '0';
 
   return (
-    <div className="min-h-screen bg-grid-pattern">
+    <div className="bg-grid-pattern" style={{ minHeight: 'calc(100vh - 65px)' }}>
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
@@ -97,12 +103,14 @@ export default function Dashboard() {
               Track and manage Omni Fiber serviceability data
             </p>
           </div>
-          {stats.hasActiveJobs && (
-            <Badge variant="outline" className="animate-pulse gap-1.5 border-primary text-primary">
-              <Activity className="h-3 w-3" />
-              Live updating
-            </Badge>
-          )}
+          <div className="flex items-center gap-4">
+            {stats.hasActiveJobs && pollingEnabled && (
+              <Badge variant="outline" className="animate-pulse gap-1.5 border-primary text-primary">
+                <Activity className="h-3 w-3" />
+                Live updating
+              </Badge>
+            )}
+          </div>
         </div>
 
         {/* Quick Stats */}
