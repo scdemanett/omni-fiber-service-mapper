@@ -60,12 +60,27 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       }),
     ]);
 
-  // Get serviceability stats by type
-  const [serviceableChecks, preorderChecks, noServiceChecks] = await Promise.all([
-    prisma.serviceabilityCheck.count({ where: { serviceabilityType: 'serviceable' } }),
-    prisma.serviceabilityCheck.count({ where: { serviceabilityType: 'preorder' } }),
-    prisma.serviceabilityCheck.count({ where: { serviceabilityType: 'none' } }),
-  ]);
+  // Get serviceability stats by counting unique addresses with their latest check
+  // This ensures we don't count duplicates from rechecks
+  const allAddresses = await prisma.address.findMany({
+    include: {
+      checks: {
+        orderBy: { checkedAt: 'desc' },
+        take: 1,
+      },
+    },
+  });
+
+  // Count addresses by their latest check status, excluding addresses with errors
+  const serviceableChecks = allAddresses.filter(
+    (a) => a.checks[0]?.serviceabilityType === 'serviceable' && !a.checks[0]?.error
+  ).length;
+  const preorderChecks = allAddresses.filter(
+    (a) => a.checks[0]?.serviceabilityType === 'preorder' && !a.checks[0]?.error
+  ).length;
+  const noServiceChecks = allAddresses.filter(
+    (a) => a.checks[0]?.serviceabilityType === 'none' && !a.checks[0]?.error
+  ).length;
 
   // Check for active jobs
   const activeJobCount = await prisma.batchJob.count({
@@ -76,49 +91,30 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const selectionsWithStats = await Promise.all(
     selections.map(async (selection) => {
       try {
-        // Use aggregation instead of loading full records to avoid UTF-8 issues
-        const totalAddresses = await prisma.address.count({
-          where: { selections: { some: { id: selection.id } } },
+        // Get addresses for this selection with their latest check
+        const addresses = await prisma.address.findMany({
+          where: {
+            selections: { some: { id: selection.id } },
+          },
+          include: {
+            checks: {
+              orderBy: { checkedAt: 'desc' },
+              take: 1,
+            },
+          },
         });
 
-        // Count checks by serviceability type
-        const [serviceableCount, preorderCount, noServiceCount] = await Promise.all([
-          prisma.serviceabilityCheck.count({
-            where: {
-              selectionId: selection.id,
-              serviceabilityType: 'serviceable',
-              checkedAt: {
-                gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000), // Last year
-              },
-            },
-          }),
-          prisma.serviceabilityCheck.count({
-            where: {
-              selectionId: selection.id,
-              serviceabilityType: 'preorder',
-              checkedAt: {
-                gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
-              },
-            },
-          }),
-          prisma.serviceabilityCheck.count({
-            where: {
-              selectionId: selection.id,
-              serviceabilityType: 'none',
-              checkedAt: {
-                gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
-              },
-            },
-          }),
-        ]);
-
-        // Get count of unique addresses that have been checked
-        const checkedAddressIds = await prisma.serviceabilityCheck.findMany({
-          where: { selectionId: selection.id },
-          select: { addressId: true },
-          distinct: ['addressId'],
-        });
-        const checkedCount = checkedAddressIds.length;
+        // Count addresses by their latest check status (excluding errors)
+        const checkedCount = addresses.filter((a) => a.checks.length > 0 && !a.checks[0]?.error).length;
+        const serviceableCount = addresses.filter(
+          (a) => a.checks[0]?.serviceabilityType === 'serviceable' && !a.checks[0]?.error
+        ).length;
+        const preorderCount = addresses.filter(
+          (a) => a.checks[0]?.serviceabilityType === 'preorder' && !a.checks[0]?.error
+        ).length;
+        const noServiceCount = addresses.filter(
+          (a) => a.checks[0]?.serviceabilityType === 'none' && !a.checks[0]?.error
+        ).length;
 
         return {
           id: selection.id,
@@ -128,7 +124,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
           serviceableCount,
           preorderCount,
           noServiceCount,
-          uncheckedCount: totalAddresses - checkedCount,
+          uncheckedCount: addresses.length - checkedCount,
         };
       } catch (error) {
         console.error(`Error loading stats for selection ${selection.id}:`, error);
