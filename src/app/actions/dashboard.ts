@@ -41,23 +41,24 @@ export interface DashboardStats {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const [sources, selections, totalAddresses, totalChecks, recentJobs] = await Promise.all([
-    prisma.geoJSONSource.findMany({
-      orderBy: { uploadedAt: 'desc' },
-      take: 5,
-      include: { _count: { select: { addresses: true } } },
-    }),
-    prisma.addressSelection.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { addresses: true } } },
-    }),
-    prisma.address.count(),
-    prisma.serviceabilityCheck.count(),
-    prisma.batchJob.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-    }),
-  ]);
+  try {
+    const [sources, selections, totalAddresses, totalChecks, recentJobs] = await Promise.all([
+      prisma.geoJSONSource.findMany({
+        orderBy: { uploadedAt: 'desc' },
+        take: 5,
+        include: { _count: { select: { addresses: true } } },
+      }),
+      prisma.addressSelection.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: { _count: { select: { addresses: true } } },
+      }),
+      prisma.address.count(),
+      prisma.serviceabilityCheck.count(),
+      prisma.batchJob.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+    ]);
 
   // Get serviceability stats by type
   const [serviceableChecks, preorderChecks, noServiceChecks] = await Promise.all([
@@ -71,47 +72,106 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     where: { status: { in: ['running', 'pending'] } },
   });
 
-  // Get stats per selection
+  // Get stats per selection with error handling
   const selectionsWithStats = await Promise.all(
     selections.map(async (selection) => {
-      const addresses = await prisma.address.findMany({
-        where: { selections: { some: { id: selection.id } } },
-        include: {
-          checks: {
-            orderBy: { checkedAt: 'desc' },
-            take: 1,
-          },
-        },
-      });
+      try {
+        // Use aggregation instead of loading full records to avoid UTF-8 issues
+        const totalAddresses = await prisma.address.count({
+          where: { selections: { some: { id: selection.id } } },
+        });
 
-      const checkedCount = addresses.filter((a) => a.checks.length > 0).length;
-      const serviceableCount = addresses.filter((a) => a.checks[0]?.serviceabilityType === 'serviceable').length;
-      const preorderCount = addresses.filter((a) => a.checks[0]?.serviceabilityType === 'preorder').length;
-      const noServiceCount = addresses.filter((a) => a.checks[0]?.serviceabilityType === 'none').length;
+        // Count checks by serviceability type
+        const [serviceableCount, preorderCount, noServiceCount] = await Promise.all([
+          prisma.serviceabilityCheck.count({
+            where: {
+              selectionId: selection.id,
+              serviceabilityType: 'serviceable',
+              checkedAt: {
+                gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000), // Last year
+              },
+            },
+          }),
+          prisma.serviceabilityCheck.count({
+            where: {
+              selectionId: selection.id,
+              serviceabilityType: 'preorder',
+              checkedAt: {
+                gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
+              },
+            },
+          }),
+          prisma.serviceabilityCheck.count({
+            where: {
+              selectionId: selection.id,
+              serviceabilityType: 'none',
+              checkedAt: {
+                gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
+              },
+            },
+          }),
+        ]);
 
-      return {
-        id: selection.id,
-        name: selection.name,
-        _count: selection._count,
-        checkedCount,
-        serviceableCount,
-        preorderCount,
-        noServiceCount,
-        uncheckedCount: addresses.length - checkedCount,
-      };
+        // Get count of unique addresses that have been checked
+        const checkedAddressIds = await prisma.serviceabilityCheck.findMany({
+          where: { selectionId: selection.id },
+          select: { addressId: true },
+          distinct: ['addressId'],
+        });
+        const checkedCount = checkedAddressIds.length;
+
+        return {
+          id: selection.id,
+          name: selection.name,
+          _count: selection._count,
+          checkedCount,
+          serviceableCount,
+          preorderCount,
+          noServiceCount,
+          uncheckedCount: totalAddresses - checkedCount,
+        };
+      } catch (error) {
+        console.error(`Error loading stats for selection ${selection.id}:`, error);
+        // Return safe default values if there's an error
+        return {
+          id: selection.id,
+          name: selection.name,
+          _count: selection._count,
+          checkedCount: 0,
+          serviceableCount: 0,
+          preorderCount: 0,
+          noServiceCount: 0,
+          uncheckedCount: 0,
+        };
+      }
     })
   );
 
-  return {
-    sources,
-    selections: selectionsWithStats,
-    totalAddresses,
-    totalChecks,
-    serviceableChecks,
-    preorderChecks,
-    noServiceChecks,
-    recentJobs,
-    hasActiveJobs: activeJobCount > 0,
-  };
+    return {
+      sources,
+      selections: selectionsWithStats,
+      totalAddresses,
+      totalChecks,
+      serviceableChecks,
+      preorderChecks,
+      noServiceChecks,
+      recentJobs,
+      hasActiveJobs: activeJobCount > 0,
+    };
+  } catch (error) {
+    console.error('Error in getDashboardStats:', error);
+    // Return safe defaults if there's a catastrophic error
+    return {
+      sources: [],
+      selections: [],
+      totalAddresses: 0,
+      totalChecks: 0,
+      serviceableChecks: 0,
+      preorderChecks: 0,
+      noServiceChecks: 0,
+      recentJobs: [],
+      hasActiveJobs: false,
+    };
+  }
 }
 

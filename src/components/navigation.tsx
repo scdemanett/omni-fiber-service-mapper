@@ -35,12 +35,18 @@ interface NavStats {
 export function Navigation() {
   const pathname = usePathname();
   const { pollingEnabled, setPollingEnabled } = usePolling();
+  const [mounted, setMounted] = useState(false);
   const [stats, setStats] = useState<NavStats>({
     hasSources: false,
     hasSelections: false,
     sourceCount: 0,
     selectionCount: 0,
   });
+
+  // Prevent hydration errors by only rendering polling switch after mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const loadStats = async () => {
@@ -125,28 +131,38 @@ export function Navigation() {
             </Link>
 
             <div className="flex items-center gap-4">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      id="global-polling"
-                      checked={pollingEnabled}
-                      onCheckedChange={setPollingEnabled}
-                      className="data-[state=checked]:bg-primary"
-                    />
-                    <label
-                      htmlFor="global-polling"
-                      className="flex cursor-pointer items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      <Activity className={cn("h-3.5 w-3.5", pollingEnabled && "text-primary")} />
-                      <span className="hidden sm:inline">Live Updates</span>
-                    </label>
+              {mounted ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="global-polling"
+                        checked={pollingEnabled}
+                        onCheckedChange={setPollingEnabled}
+                        className="data-[state=checked]:bg-primary"
+                      />
+                      <label
+                        htmlFor="global-polling"
+                        className="flex cursor-pointer items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        <Activity className={cn("h-3.5 w-3.5", pollingEnabled && "text-primary")} />
+                        <span className="hidden sm:inline">Live Updates</span>
+                      </label>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{pollingEnabled ? 'Disable' : 'Enable'} automatic polling on all pages</p>
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="h-5 w-9 rounded-full bg-input" />
+                  <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+                    <Activity className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Live Updates</span>
                   </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{pollingEnabled ? 'Disable' : 'Enable'} automatic polling on all pages</p>
-                </TooltipContent>
-              </Tooltip>
+                </div>
+              )}
 
               <div className="h-8 w-px bg-border" />
 

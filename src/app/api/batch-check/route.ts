@@ -303,7 +303,17 @@ async function processBatch(jobId: string, selectionId: string) {
         }
       );
 
+      if (!response.ok) {
+        throw new Error(`API returned status ${response.status}`);
+      }
+
       const result = await response.json();
+      
+      // Validate result structure
+      if (!result || typeof result !== 'object') {
+        throw new Error('Invalid API response structure');
+      }
+
       const serviceabilityResult = isServiceable(result.fullResponse as ShopperResponse);
 
       // Record the result
@@ -311,11 +321,10 @@ async function processBatch(jobId: string, selectionId: string) {
         address.id,
         jobId,
         serviceabilityResult,
-        result.fullResponse,
         result.error
       );
 
-      console.log(`  -> ${serviceabilityResult.serviceable ? 'SERVICEABLE' : 'Not serviceable'}`);
+      console.log(`  -> ${serviceabilityResult.serviceabilityType}: ${serviceabilityResult.serviceable ? 'SERVICEABLE' : 'Not serviceable'}`);
 
       // Wait between requests (respecting rate limits)
       if (i < addresses.length - 1) {
@@ -329,11 +338,12 @@ async function processBatch(jobId: string, selectionId: string) {
           address.id,
           jobId,
           { serviceable: false, serviceabilityType: 'none' },
-          null,
-          error instanceof Error ? error.message : 'Unknown error'
+          error instanceof Error ? error.message.substring(0, 500) : 'Unknown error'
         );
       } catch (e) {
         console.error('Failed to record error:', e);
+        // If we can't even record the error, log it and continue
+        // This prevents the entire batch from failing due to one bad record
       }
     }
   }

@@ -112,12 +112,14 @@ export async function updateBatchJobStatus(
 
 /**
  * Record a serviceability check result
+ * 
+ * All necessary data is extracted and stored in individual fields.
+ * We don't store the full API response to avoid UTF-8 corruption issues and save space.
  */
 export async function recordServiceabilityCheck(
   addressId: string,
   jobId: string,
   result: ServiceabilityResult,
-  fullResponse: unknown,
   error?: string
 ): Promise<void> {
   // Create the check record
@@ -133,8 +135,7 @@ export async function recordServiceabilityCheck(
       isPreSale: result.isPreSale,
       salesStatus: result.salesStatus,
       matchType: result.matchType,
-      fullResponse: JSON.stringify(fullResponse),
-      error,
+      error: error?.substring(0, 1000), // Limit error message length
     },
   });
 

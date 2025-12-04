@@ -20,6 +20,10 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Omni Fiber Service Mapper",
   description: "Map and check serviceability for Omni Fiber addresses",
+  appleWebApp: {
+    title: 'Omni Fiber Service Mapper',
+    statusBarStyle: 'black-translucent',
+  },
 };
 
 export default function RootLayout({

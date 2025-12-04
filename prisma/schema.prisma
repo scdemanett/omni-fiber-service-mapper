@@ -99,9 +99,6 @@ model ServiceabilityCheck {
   apiCreateDate   DateTime?
   apiUpdateDate   DateTime?
   
-  // Full API response (stored as JSON)
-  fullResponse    String    // JSON string
-  
   // Error tracking
   error           String?
   
