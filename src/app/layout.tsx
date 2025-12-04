@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { Navigation } from "@/components/navigation";
 import { PollingProvider } from "@/lib/polling-context";
+import { SelectionProvider } from "@/lib/selection-context";
 import VersionBadge from "@/components/version-badge";
 
 const dmSans = DM_Sans({
@@ -37,16 +38,18 @@ export default function RootLayout({
       <body
         className={`${dmSans.variable} ${jetbrainsMono.variable} antialiased min-h-screen`}
       >
-        <PollingProvider>
-          <div className="flex min-h-screen flex-col">
-            <Navigation />
-            <main>
-              {children}
-            </main>
-            <VersionBadge />
-          </div>
-          <Toaster />
-        </PollingProvider>
+        <SelectionProvider>
+          <PollingProvider>
+            <div className="flex min-h-screen flex-col">
+              <Navigation />
+              <main>
+                {children}
+              </main>
+              <VersionBadge />
+            </div>
+            <Toaster />
+          </PollingProvider>
+        </SelectionProvider>
       </body>
     </html>
   );

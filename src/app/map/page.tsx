@@ -23,6 +23,7 @@ import { getSelections, getSelectionAddresses } from '@/app/actions/selections';
 import { getCheckTimeline, getAddressesAtTime, getSnapshotStats, type AddressAtTime } from '@/app/actions/map-timeline';
 import { format } from 'date-fns';
 import { usePolling } from '@/lib/polling-context';
+import { useSelection } from '@/lib/selection-context';
 
 interface BatchJob {
   id: string;
@@ -70,6 +71,14 @@ function MapContent() {
   const router = useRouter();
   const preselectedId = searchParams.get('selection');
   const { pollingEnabled } = usePolling();
+  const { 
+    selectedCampaignId, 
+    setSelectedCampaignId,
+    timelineEnabled: contextTimelineEnabled,
+    setTimelineEnabled: setContextTimelineEnabled,
+    selectedTimeIndex: contextTimeIndex,
+    setSelectedTimeIndex: setContextTimeIndex
+  } = useSelection();
   
   // Read filter state from URL
   const urlShowServiceable = searchParams.get('serviceable');
@@ -82,18 +91,23 @@ function MapContent() {
   const urlTimelineIndex = searchParams.get('timeIndex');
 
   const [selections, setSelections] = useState<Selection[]>([]);
-  const [selectedSelectionId, setSelectedSelectionId] = useState<string>(preselectedId || '');
+  // Prioritize URL param, then context, then empty string
+  const [selectedSelectionId, setSelectedSelectionId] = useState<string>(
+    preselectedId || selectedCampaignId || ''
+  );
   const [addresses, setAddresses] = useState<AddressWithCheck[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingAddresses, setIsLoadingAddresses] = useState(false);
   const [activeJob, setActiveJob] = useState<BatchJob | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Timeline state - initialize from URL
-  const [timelineEnabled, setTimelineEnabled] = useState(urlTimelineEnabled === 'true');
+  // Timeline state - initialize from URL, then context, then defaults
+  const [timelineEnabled, setTimelineEnabled] = useState(
+    urlTimelineEnabled === 'true' ? true : urlTimelineEnabled === 'false' ? false : contextTimelineEnabled
+  );
   const [timelineDates, setTimelineDates] = useState<Date[]>([]);
   const [selectedTimeIndex, setSelectedTimeIndex] = useState<number>(
-    urlTimelineIndex ? parseInt(urlTimelineIndex, 10) : 0
+    urlTimelineIndex ? parseInt(urlTimelineIndex, 10) : contextTimeIndex
   );
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -133,8 +147,9 @@ function MapContent() {
   // Handle selection change
   const handleSelectionChange = useCallback((value: string) => {
     setSelectedSelectionId(value);
+    setSelectedCampaignId(value); // Save to context
     updateUrl(value, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, selectedTimeIndex);
-  }, [showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, selectedTimeIndex, updateUrl]);
+  }, [showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, selectedTimeIndex, updateUrl, setSelectedCampaignId]);
 
   // Handle filter changes
   const handleFilterChange = useCallback((filter: 'serviceable' | 'preorder' | 'noService' | 'unchecked', value: boolean) => {
@@ -183,13 +198,19 @@ function MapContent() {
         const urlIndex = urlTimelineIndex ? parseInt(urlTimelineIndex, 10) : null;
         if (urlIndex !== null && urlIndex >= 0 && urlIndex < dates.length) {
           setSelectedTimeIndex(urlIndex);
+          setContextTimeIndex(urlIndex); // Save to context
         } else if (urlIndex === null) {
-          // No URL index, default to most recent
-          setSelectedTimeIndex(dates.length - 1);
+          // No URL index, use context value if valid, otherwise default to most recent
+          const finalIndex = contextTimeIndex >= 0 && contextTimeIndex < dates.length 
+            ? contextTimeIndex 
+            : dates.length - 1;
+          setSelectedTimeIndex(finalIndex);
+          setContextTimeIndex(finalIndex); // Save to context
         } else {
           // URL index out of bounds, clamp to valid range
           const clampedIndex = Math.min(Math.max(0, urlIndex), dates.length - 1);
           setSelectedTimeIndex(clampedIndex);
+          setContextTimeIndex(clampedIndex); // Save to context
           updateUrl(selectionId, showServiceable, showPreorder, showNoService, showUnchecked, urlTimelineEnabled === 'true', clampedIndex);
         }
       }
@@ -198,7 +219,7 @@ function MapContent() {
     } finally {
       setIsLoadingTimeline(false);
     }
-  }, [urlTimelineIndex, urlTimelineEnabled, showServiceable, showPreorder, showNoService, showUnchecked, updateUrl]);
+  }, [urlTimelineIndex, urlTimelineEnabled, contextTimeIndex, showServiceable, showPreorder, showNoService, showUnchecked, updateUrl, setContextTimeIndex]);
 
   const loadAddressesAtTime = useCallback(async (selectionId: string, date: Date) => {
     try {
@@ -246,11 +267,53 @@ function MapContent() {
     loadSelections();
   }, [loadSelections]);
 
+  // Initialize from URL or context
   useEffect(() => {
     if (preselectedId) {
       setSelectedSelectionId(preselectedId);
+      setSelectedCampaignId(preselectedId);
+      if (urlTimelineEnabled) {
+        setContextTimelineEnabled(urlTimelineEnabled === 'true');
+      }
     }
-  }, [preselectedId]);
+  }, [preselectedId, urlTimelineEnabled, setSelectedCampaignId, setContextTimelineEnabled]);
+
+  // Restore from context if no URL param
+  useEffect(() => {
+    if (!preselectedId && selectedCampaignId && selectedSelectionId !== selectedCampaignId) {
+      setSelectedSelectionId(selectedCampaignId);
+    }
+  }, [preselectedId, selectedCampaignId, selectedSelectionId]);
+
+  // Update URL when state changes (with debounce to avoid loops)
+  const urlUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    if (!selectedSelectionId) return;
+    
+    // Clear any pending URL update
+    if (urlUpdateTimeoutRef.current) {
+      clearTimeout(urlUpdateTimeoutRef.current);
+    }
+    
+    // Schedule URL update
+    urlUpdateTimeoutRef.current = setTimeout(() => {
+      updateUrl(
+        selectedSelectionId,
+        showServiceable,
+        showPreorder,
+        showNoService,
+        showUnchecked,
+        timelineEnabled,
+        selectedTimeIndex
+      );
+    }, 500); // Debounce URL updates
+
+    return () => {
+      if (urlUpdateTimeoutRef.current) {
+        clearTimeout(urlUpdateTimeoutRef.current);
+      }
+    };
+  }, [selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, selectedTimeIndex, updateUrl]);
 
   // Load addresses when selection changes
   useEffect(() => {
@@ -258,6 +321,7 @@ function MapContent() {
       setAddresses([]);
       setActiveJob(null);
       setTimelineEnabled(false);
+      setContextTimelineEnabled(false); // Sync with context
       setTimelineDates([]);
       return;
     }
@@ -342,6 +406,7 @@ function MapContent() {
   const handleToggleTimeline = () => {
     const newTimelineEnabled = !timelineEnabled;
     setTimelineEnabled(newTimelineEnabled);
+    setContextTimelineEnabled(newTimelineEnabled); // Save to context
     if (isPlaying) {
       setIsPlaying(false);
       if (playIntervalRef.current) {
@@ -354,6 +419,7 @@ function MapContent() {
   const handleTimelineChange = (value: number[]) => {
     const newIndex = value[0];
     setSelectedTimeIndex(newIndex);
+    setContextTimeIndex(newIndex); // Save to context
     updateUrl(selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, newIndex);
   };
 
@@ -377,6 +443,7 @@ function MapContent() {
             return prev;
           }
           const newIndex = prev + 1;
+          setContextTimeIndex(newIndex); // Save to context
           // Update URL as we play through timeline
           updateUrl(selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, newIndex);
           return newIndex;
@@ -388,12 +455,14 @@ function MapContent() {
   const handleSkipBack = () => {
     const newIndex = Math.max(0, selectedTimeIndex - 1);
     setSelectedTimeIndex(newIndex);
+    setContextTimeIndex(newIndex); // Save to context
     updateUrl(selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, newIndex);
   };
 
   const handleSkipForward = () => {
     const newIndex = Math.min(timelineDates.length - 1, selectedTimeIndex + 1);
     setSelectedTimeIndex(newIndex);
+    setContextTimeIndex(newIndex); // Save to context
     updateUrl(selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, newIndex);
   };
 

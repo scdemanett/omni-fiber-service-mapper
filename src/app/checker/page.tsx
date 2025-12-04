@@ -31,6 +31,7 @@ import {
 import { getSelections } from '@/app/actions/selections';
 import { Suspense } from 'react';
 import { usePolling } from '@/lib/polling-context';
+import { useSelection } from '@/lib/selection-context';
 
 interface Selection {
   id: string;
@@ -74,9 +75,13 @@ function CheckerContent() {
   const searchParams = useSearchParams();
   const preselectedId = searchParams.get('selection');
   const { pollingEnabled } = usePolling();
+  const { selectedCampaignId, setSelectedCampaignId } = useSelection();
 
   const [selections, setSelections] = useState<Selection[]>([]);
-  const [selectedSelectionId, setSelectedSelectionId] = useState<string>(preselectedId || '');
+  // Prioritize URL param, then context, then empty string
+  const [selectedSelectionId, setSelectedSelectionId] = useState<string>(
+    preselectedId || selectedCampaignId || ''
+  );
   const [currentJob, setCurrentJob] = useState<BatchJob | null>(null);
   const [allJobs, setAllJobs] = useState<BatchJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -124,8 +129,12 @@ function CheckerContent() {
   useEffect(() => {
     if (preselectedId) {
       setSelectedSelectionId(preselectedId);
+      setSelectedCampaignId(preselectedId); // Sync with context
+    } else if (selectedCampaignId && !selectedSelectionId) {
+      // If no URL param but we have a context value, use it
+      setSelectedSelectionId(selectedCampaignId);
     }
-  }, [preselectedId]);
+  }, [preselectedId, selectedCampaignId, setSelectedCampaignId, selectedSelectionId]);
 
   // Poll for job status when running or pending and polling is enabled
   useEffect(() => {
@@ -338,6 +347,7 @@ function CheckerContent() {
                   value={selectedSelectionId}
                   onValueChange={(value) => {
                     setSelectedSelectionId(value);
+                    setSelectedCampaignId(value); // Save to context
                     // Check if there's an active job for this selection
                     const activeJob = allJobs.find(
                       (j) => (j.status === 'running' || j.status === 'paused' || j.status === 'pending') && j.selectionId === value
