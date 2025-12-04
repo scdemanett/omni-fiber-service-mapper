@@ -116,6 +116,7 @@ model BatchJob {
   selectionId     String?
   name            String
   status          String    // pending, running, paused, completed, failed
+  recheckType     String    @default("unchecked") // unchecked, preorder, noservice, all
   
   totalAddresses  Int
   checkedCount    Int       @default(0)

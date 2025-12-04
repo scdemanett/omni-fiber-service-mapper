@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function handleStart(selectionId: string, name: string, recheckType?: 'unchecked' | 'preorder' | 'all') {
+async function handleStart(selectionId: string, name: string, recheckType?: 'unchecked' | 'preorder' | 'noservice' | 'all') {
   if (!selectionId) {
     return NextResponse.json({ error: 'Selection ID is required' }, { status: 400 });
   }
@@ -75,6 +75,10 @@ async function handleStart(selectionId: string, name: string, recheckType?: 'unc
     // Re-check only addresses that were preorder in their last check
     const preorderAddresses = await getAddressesByServiceabilityType(selectionId, 'preorder');
     addresses = preorderAddresses.map(a => ({ id: a.id }));
+  } else if (recheckMode === 'noservice') {
+    // Re-check only addresses that had no service in their last check
+    const noServiceAddresses = await getAddressesByServiceabilityType(selectionId, 'none');
+    addresses = noServiceAddresses.map(a => ({ id: a.id }));
   } else if (recheckMode === 'all') {
     // Check all addresses (useful for re-checking everything)
     addresses = await prisma.address.findMany({
@@ -97,6 +101,7 @@ async function handleStart(selectionId: string, name: string, recheckType?: 'unc
   if (addresses.length === 0) {
     const messageMap = {
       'preorder': 'No preorder addresses found to re-check.',
+      'noservice': 'No addresses with no service found to re-check.',
       'all': 'No addresses in selection.',
       'unchecked': 'All addresses in this selection have already been checked.'
     };
@@ -107,12 +112,13 @@ async function handleStart(selectionId: string, name: string, recheckType?: 'unc
   }
 
   // Create batch job with descriptive name
-  const jobName = name || `${recheckMode === 'preorder' ? 'Re-check Preorder' : recheckMode === 'all' ? 'Re-check All' : 'Check Unchecked'} - ${new Date().toLocaleString()}`;
+  const jobName = name || `${recheckMode === 'preorder' ? 'Re-check Preorder' : recheckMode === 'noservice' ? 'Re-check No Service' : recheckMode === 'all' ? 'Re-check All' : 'Check Unchecked'} - ${new Date().toLocaleString()}`;
   
   const job = await createBatchJob(
     jobName,
     selectionId,
-    addresses.map((a) => a.id)
+    addresses.map((a) => a.id),
+    recheckMode
   );
 
   // Start processing in background (non-blocking)
@@ -261,20 +267,46 @@ async function processBatch(jobId: string, selectionId: string) {
     return;
   }
 
-  // Get unchecked addresses for the selection (starting from current index)
-  const addresses = await prisma.address.findMany({
-    where: {
-      selections: { some: { id: selectionId } },
-      checks: { none: {} }, // Only addresses without checks
-    },
-    select: {
-      id: true,
-      addressString: true,
-    },
-    orderBy: { id: 'asc' },
-  });
+  // Get addresses based on the job's recheck type
+  let addresses;
+  const recheckType = job.recheckType || 'unchecked';
+  
+  if (recheckType === 'preorder') {
+    // Re-check only addresses that were preorder in their last check
+    const preorderAddresses = await getAddressesByServiceabilityType(selectionId, 'preorder');
+    addresses = preorderAddresses;
+  } else if (recheckType === 'noservice') {
+    // Re-check only addresses that had no service in their last check
+    const noServiceAddresses = await getAddressesByServiceabilityType(selectionId, 'none');
+    addresses = noServiceAddresses;
+  } else if (recheckType === 'all') {
+    // Check all addresses
+    addresses = await prisma.address.findMany({
+      where: {
+        selections: { some: { id: selectionId } },
+      },
+      select: {
+        id: true,
+        addressString: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+  } else {
+    // Default: only unchecked addresses
+    addresses = await prisma.address.findMany({
+      where: {
+        selections: { some: { id: selectionId } },
+        checks: { none: {} }, // Only addresses without checks
+      },
+      select: {
+        id: true,
+        addressString: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+  }
 
-  console.log(`Found ${addresses.length} unchecked addresses`);
+  console.log(`Found ${addresses.length} addresses to check (mode: ${recheckType})`);
 
   for (let i = 0; i < addresses.length; i++) {
     const address = addresses[i];

@@ -32,13 +32,15 @@ export interface AddressToCheck {
 export async function createBatchJob(
   name: string,
   selectionId: string | null,
-  addressIds: string[]
+  addressIds: string[],
+  recheckType?: string
 ): Promise<BatchProgress> {
   const job = await prisma.batchJob.create({
     data: {
       name,
       selectionId,
       status: 'pending',
+      recheckType: recheckType || 'unchecked',
       totalAddresses: addressIds.length,
       checkedCount: 0,
       serviceableCount: 0,

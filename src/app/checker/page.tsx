@@ -81,7 +81,7 @@ function CheckerContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [recheckType, setRecheckType] = useState<'unchecked' | 'preorder' | 'all'>('unchecked');
+  const [recheckType, setRecheckType] = useState<'unchecked' | 'preorder' | 'noservice' | 'all'>('unchecked');
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadSelections = useCallback(async () => {
@@ -399,7 +399,7 @@ function CheckerContent() {
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Check Mode</label>
-                    <Select value={recheckType} onValueChange={(value: 'unchecked' | 'preorder' | 'all') => setRecheckType(value)}>
+                    <Select value={recheckType} onValueChange={(value: 'unchecked' | 'preorder' | 'noservice' | 'all') => setRecheckType(value)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -410,6 +410,9 @@ function CheckerContent() {
                         <SelectItem value="preorder">
                           Re-check Preorder ({selectedSelection.preorderCount})
                         </SelectItem>
+                        <SelectItem value="noservice">
+                          Re-check No Service ({selectedSelection.noServiceCount})
+                        </SelectItem>
                         <SelectItem value="all">
                           Re-check All ({selectedSelection._count.addresses})
                         </SelectItem>
@@ -418,6 +421,11 @@ function CheckerContent() {
                     {recheckType === 'preorder' && (
                       <p className="text-xs text-muted-foreground">
                         Re-checks addresses that were marked as preorder to see if they're now available
+                      </p>
+                    )}
+                    {recheckType === 'noservice' && (
+                      <p className="text-xs text-muted-foreground">
+                        Re-checks addresses that had no service to see if they're now serviceable
                       </p>
                     )}
                     {recheckType === 'all' && (
@@ -436,6 +444,7 @@ function CheckerContent() {
                     disabled={!selectedSelectionId || isStarting || isLoading || 
                       (recheckType === 'unchecked' && selectedSelection?.uncheckedCount === 0) ||
                       (recheckType === 'preorder' && selectedSelection?.preorderCount === 0) ||
+                      (recheckType === 'noservice' && selectedSelection?.noServiceCount === 0) ||
                       (recheckType === 'all' && selectedSelection?._count.addresses === 0)}
                     className="w-full"
                   >
