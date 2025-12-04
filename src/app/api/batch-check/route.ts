@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function handleStart(selectionId: string, name: string, recheckType?: 'unchecked' | 'preorder' | 'noservice' | 'all') {
+async function handleStart(selectionId: string, name: string, recheckType?: 'unchecked' | 'preorder' | 'noservice' | 'errors' | 'all') {
   if (!selectionId) {
     return NextResponse.json({ error: 'Selection ID is required' }, { status: 400 });
   }
@@ -79,6 +79,24 @@ async function handleStart(selectionId: string, name: string, recheckType?: 'unc
     // Re-check only addresses that had no service in their last check
     const noServiceAddresses = await getAddressesByServiceabilityType(selectionId, 'none');
     addresses = noServiceAddresses.map(a => ({ id: a.id }));
+  } else if (recheckMode === 'errors') {
+    // Re-check addresses that have error messages in their last check
+    const addressesWithErrors = await prisma.address.findMany({
+      where: {
+        selections: { some: { id: selectionId } },
+      },
+      include: {
+        checks: {
+          orderBy: { checkedAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+    
+    // Filter to only those with errors
+    addresses = addressesWithErrors
+      .filter((a) => a.checks[0]?.error != null && a.checks[0]?.error !== '')
+      .map((a) => ({ id: a.id }));
   } else if (recheckMode === 'all') {
     // Check all addresses (useful for re-checking everything)
     addresses = await prisma.address.findMany({
@@ -102,6 +120,7 @@ async function handleStart(selectionId: string, name: string, recheckType?: 'unc
     const messageMap = {
       'preorder': 'No preorder addresses found to re-check.',
       'noservice': 'No addresses with no service found to re-check.',
+      'errors': 'No addresses with errors found to re-check.',
       'all': 'No addresses in selection.',
       'unchecked': 'All addresses in this selection have already been checked.'
     };
@@ -112,7 +131,7 @@ async function handleStart(selectionId: string, name: string, recheckType?: 'unc
   }
 
   // Create batch job with descriptive name
-  const jobName = name || `${recheckMode === 'preorder' ? 'Re-check Preorder' : recheckMode === 'noservice' ? 'Re-check No Service' : recheckMode === 'all' ? 'Re-check All' : 'Check Unchecked'} - ${new Date().toLocaleString()}`;
+  const jobName = name || `${recheckMode === 'preorder' ? 'Re-check Preorder' : recheckMode === 'noservice' ? 'Re-check No Service' : recheckMode === 'errors' ? 'Re-check Errors' : recheckMode === 'all' ? 'Re-check All' : 'Check Unchecked'} - ${new Date().toLocaleString()}`;
   
   const job = await createBatchJob(
     jobName,
@@ -279,6 +298,27 @@ async function processBatch(jobId: string, selectionId: string) {
     // Re-check only addresses that had no service in their last check
     const noServiceAddresses = await getAddressesByServiceabilityType(selectionId, 'none');
     addresses = noServiceAddresses;
+  } else if (recheckType === 'errors') {
+    // Re-check addresses that have error messages in their last check
+    const addressesWithErrors = await prisma.address.findMany({
+      where: {
+        selections: { some: { id: selectionId } },
+      },
+      include: {
+        checks: {
+          orderBy: { checkedAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+    
+    // Filter to only those with errors and map to correct format
+    addresses = addressesWithErrors
+      .filter((a) => a.checks[0]?.error != null && a.checks[0]?.error !== '')
+      .map((a) => ({
+        id: a.id,
+        addressString: a.addressString,
+      }));
   } else if (recheckType === 'all') {
     // Check all addresses
     addresses = await prisma.address.findMany({
@@ -341,6 +381,14 @@ async function processBatch(jobId: string, selectionId: string) {
 
       const result = await response.json();
       
+      // Check if the API returned an error (network/API failure, not a valid response)
+      if (result.error && !result.fullResponse) {
+        // This is an API/network error, not a valid check - don't record it
+        console.log(`  -> API ERROR: ${result.error} (not recording, address remains unchecked)`);
+        // Continue to next address without recording
+        continue;
+      }
+      
       // Validate result structure
       if (!result || typeof result !== 'object') {
         throw new Error('Invalid API response structure');
@@ -348,7 +396,7 @@ async function processBatch(jobId: string, selectionId: string) {
 
       const serviceabilityResult = isServiceable(result.fullResponse as ShopperResponse);
 
-      // Record the result
+      // Record the result only if we have a valid response
       await recordServiceabilityCheck(
         address.id,
         jobId,
@@ -364,19 +412,10 @@ async function processBatch(jobId: string, selectionId: string) {
       }
     } catch (error) {
       console.error(`Error checking address ${address.addressString}:`, error);
-      // Record the error but continue
-      try {
-        await recordServiceabilityCheck(
-          address.id,
-          jobId,
-          { serviceable: false, serviceabilityType: 'none' },
-          error instanceof Error ? error.message.substring(0, 500) : 'Unknown error'
-        );
-      } catch (e) {
-        console.error('Failed to record error:', e);
-        // If we can't even record the error, log it and continue
-        // This prevents the entire batch from failing due to one bad record
-      }
+      // DON'T record the check - let the address remain unchecked so it can be retried
+      // This prevents false "no service" entries from API/network errors
+      console.log(`  -> ERROR: ${error instanceof Error ? error.message : 'Unknown error'} (not recording, address remains unchecked)`);
+      // Continue to next address without recording
     }
   }
 

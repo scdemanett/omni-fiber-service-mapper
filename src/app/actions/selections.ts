@@ -104,6 +104,7 @@ export async function getSelections() {
       const serviceableCount = addresses.filter((a) => a.checks[0]?.serviceabilityType === 'serviceable').length;
       const preorderCount = addresses.filter((a) => a.checks[0]?.serviceabilityType === 'preorder').length;
       const noServiceCount = addresses.filter((a) => a.checks[0]?.serviceabilityType === 'none').length;
+      const errorCount = addresses.filter((a) => a.checks[0]?.error != null && a.checks[0]?.error !== '').length;
 
       return {
         ...selection,
@@ -111,6 +112,7 @@ export async function getSelections() {
         serviceableCount,
         preorderCount,
         noServiceCount,
+        errorCount,
         uncheckedCount: addresses.length - checkedCount,
       };
     })
