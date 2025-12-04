@@ -76,6 +76,10 @@ function MapContent() {
   const urlShowPreorder = searchParams.get('preorder');
   const urlShowNoService = searchParams.get('noService');
   const urlShowUnchecked = searchParams.get('unchecked');
+  
+  // Read timeline state from URL
+  const urlTimelineEnabled = searchParams.get('timeline');
+  const urlTimelineIndex = searchParams.get('timeIndex');
 
   const [selections, setSelections] = useState<Selection[]>([]);
   const [selectedSelectionId, setSelectedSelectionId] = useState<string>(preselectedId || '');
@@ -85,10 +89,12 @@ function MapContent() {
   const [activeJob, setActiveJob] = useState<BatchJob | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Timeline state
-  const [timelineEnabled, setTimelineEnabled] = useState(false);
+  // Timeline state - initialize from URL
+  const [timelineEnabled, setTimelineEnabled] = useState(urlTimelineEnabled === 'true');
   const [timelineDates, setTimelineDates] = useState<Date[]>([]);
-  const [selectedTimeIndex, setSelectedTimeIndex] = useState<number>(0);
+  const [selectedTimeIndex, setSelectedTimeIndex] = useState<number>(
+    urlTimelineIndex ? parseInt(urlTimelineIndex, 10) : 0
+  );
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -100,13 +106,25 @@ function MapContent() {
   const [showUnchecked, setShowUnchecked] = useState(urlShowUnchecked !== 'false');
 
   // Update URL when selection or filters change
-  const updateUrl = useCallback((selectionId: string, serviceable: boolean, preorder: boolean, noService: boolean, unchecked: boolean) => {
+  const updateUrl = useCallback((
+    selectionId: string, 
+    serviceable: boolean, 
+    preorder: boolean, 
+    noService: boolean, 
+    unchecked: boolean,
+    timelineOn?: boolean,
+    timeIndex?: number
+  ) => {
     const params = new URLSearchParams();
     if (selectionId) params.set('selection', selectionId);
     if (!serviceable) params.set('serviceable', 'false');
     if (!preorder) params.set('preorder', 'false');
     if (!noService) params.set('noService', 'false');
     if (!unchecked) params.set('unchecked', 'false');
+    if (timelineOn) {
+      params.set('timeline', 'true');
+      if (timeIndex !== undefined) params.set('timeIndex', timeIndex.toString());
+    }
     
     const queryString = params.toString();
     router.replace(`/map${queryString ? `?${queryString}` : ''}`, { scroll: false });
@@ -115,8 +133,8 @@ function MapContent() {
   // Handle selection change
   const handleSelectionChange = useCallback((value: string) => {
     setSelectedSelectionId(value);
-    updateUrl(value, showServiceable, showPreorder, showNoService, showUnchecked);
-  }, [showServiceable, showPreorder, showNoService, showUnchecked, updateUrl]);
+    updateUrl(value, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, selectedTimeIndex);
+  }, [showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, selectedTimeIndex, updateUrl]);
 
   // Handle filter changes
   const handleFilterChange = useCallback((filter: 'serviceable' | 'preorder' | 'noService' | 'unchecked', value: boolean) => {
@@ -130,8 +148,8 @@ function MapContent() {
     if (filter === 'noService') setShowNoService(value);
     if (filter === 'unchecked') setShowUnchecked(value);
     
-    updateUrl(selectedSelectionId, newServiceable, newPreorder, newNoService, newUnchecked);
-  }, [selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, updateUrl]);
+    updateUrl(selectedSelectionId, newServiceable, newPreorder, newNoService, newUnchecked, timelineEnabled, selectedTimeIndex);
+  }, [selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, selectedTimeIndex, updateUrl]);
 
   const loadSelections = useCallback(async () => {
     try {
@@ -161,14 +179,26 @@ function MapContent() {
       console.log(`Map: Loaded ${dates.length} timeline dates for selection ${selectionId}`, dates);
       setTimelineDates(dates);
       if (dates.length > 0) {
-        setSelectedTimeIndex(dates.length - 1); // Start at most recent
+        // If URL has timeline index, validate it's in bounds
+        const urlIndex = urlTimelineIndex ? parseInt(urlTimelineIndex, 10) : null;
+        if (urlIndex !== null && urlIndex >= 0 && urlIndex < dates.length) {
+          setSelectedTimeIndex(urlIndex);
+        } else if (urlIndex === null) {
+          // No URL index, default to most recent
+          setSelectedTimeIndex(dates.length - 1);
+        } else {
+          // URL index out of bounds, clamp to valid range
+          const clampedIndex = Math.min(Math.max(0, urlIndex), dates.length - 1);
+          setSelectedTimeIndex(clampedIndex);
+          updateUrl(selectionId, showServiceable, showPreorder, showNoService, showUnchecked, urlTimelineEnabled === 'true', clampedIndex);
+        }
       }
     } catch (error) {
       console.error('Error loading timeline:', error);
     } finally {
       setIsLoadingTimeline(false);
     }
-  }, []);
+  }, [urlTimelineIndex, urlTimelineEnabled, showServiceable, showPreorder, showNoService, showUnchecked, updateUrl]);
 
   const loadAddressesAtTime = useCallback(async (selectionId: string, date: Date) => {
     try {
@@ -310,17 +340,21 @@ function MapContent() {
   const uncheckedCount = addresses.filter((a) => !a.checks[0]).length;
 
   const handleToggleTimeline = () => {
-    setTimelineEnabled(!timelineEnabled);
+    const newTimelineEnabled = !timelineEnabled;
+    setTimelineEnabled(newTimelineEnabled);
     if (isPlaying) {
       setIsPlaying(false);
       if (playIntervalRef.current) {
         clearInterval(playIntervalRef.current);
       }
     }
+    updateUrl(selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, newTimelineEnabled, selectedTimeIndex);
   };
 
   const handleTimelineChange = (value: number[]) => {
-    setSelectedTimeIndex(value[0]);
+    const newIndex = value[0];
+    setSelectedTimeIndex(newIndex);
+    updateUrl(selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, newIndex);
   };
 
   const handlePlayPause = () => {
@@ -342,18 +376,25 @@ function MapContent() {
             }
             return prev;
           }
-          return prev + 1;
+          const newIndex = prev + 1;
+          // Update URL as we play through timeline
+          updateUrl(selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, newIndex);
+          return newIndex;
         });
       }, 1500); // Advance every 1.5 seconds
     }
   };
 
   const handleSkipBack = () => {
-    setSelectedTimeIndex(Math.max(0, selectedTimeIndex - 1));
+    const newIndex = Math.max(0, selectedTimeIndex - 1);
+    setSelectedTimeIndex(newIndex);
+    updateUrl(selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, newIndex);
   };
 
   const handleSkipForward = () => {
-    setSelectedTimeIndex(Math.min(timelineDates.length - 1, selectedTimeIndex + 1));
+    const newIndex = Math.min(timelineDates.length - 1, selectedTimeIndex + 1);
+    setSelectedTimeIndex(newIndex);
+    updateUrl(selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, newIndex);
   };
 
   // Clean up play interval on unmount
