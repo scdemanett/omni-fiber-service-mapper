@@ -27,6 +27,26 @@ npm run dev
 
 Visit [http://localhost:3000](http://localhost:3000) to get started!
 
+## Screenshots
+
+### Dashboard
+![Dashboard view showing overview statistics and quick access to all features](screenshots/dashboard.jpg)
+
+### GeoJSON Upload
+![Upload interface for importing address data from GeoJSON files](screenshots/upload.jpg)
+
+### Address Selections
+![Selection management interface for creating and managing address campaigns](screenshots/selections.jpg)
+
+### Batch Serviceability Checker
+![Batch checker interface with progress tracking and pause/resume controls](screenshots/checker.jpg)
+
+### Interactive Map
+![Interactive map with color-coded service availability markers and filtering options](screenshots/map.jpg)
+
+### Progress Tracking
+![Progress tracking page showing service status changes and transition statistics](screenshots/progress.jpg)
+
 ## Features
 
 ### 🗺️ Interactive Map View
