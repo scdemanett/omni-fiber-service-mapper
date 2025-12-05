@@ -7,10 +7,6 @@ interface SelectionContextType {
   setSelectedCampaignId: (id: string | null) => void;
   lastViewedPage: string | null;
   setLastViewedPage: (page: string | null) => void;
-  timelineEnabled: boolean;
-  setTimelineEnabled: (enabled: boolean) => void;
-  selectedTimeIndex: number;
-  setSelectedTimeIndex: (index: number) => void;
 }
 
 const SelectionContext = createContext<SelectionContextType | undefined>(undefined);
@@ -20,15 +16,11 @@ const STORAGE_KEY = 'omni-fiber-selections';
 interface StoredSelections {
   selectedCampaignId: string | null;
   lastViewedPage: string | null;
-  timelineEnabled: boolean;
-  selectedTimeIndex: number;
 }
 
 export function SelectionProvider({ children }: { children: ReactNode }) {
   const [selectedCampaignId, setSelectedCampaignIdState] = useState<string | null>(null);
   const [lastViewedPage, setLastViewedPageState] = useState<string | null>(null);
-  const [timelineEnabled, setTimelineEnabledState] = useState<boolean>(false);
-  const [selectedTimeIndex, setSelectedTimeIndexState] = useState<number>(0);
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Load from sessionStorage on mount
@@ -40,8 +32,6 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
           const parsed: StoredSelections = JSON.parse(stored);
           setSelectedCampaignIdState(parsed.selectedCampaignId || null);
           setLastViewedPageState(parsed.lastViewedPage || null);
-          setTimelineEnabledState(parsed.timelineEnabled || false);
-          setSelectedTimeIndexState(parsed.selectedTimeIndex || 0);
         }
       } catch (error) {
         console.error('Error loading selections from sessionStorage:', error);
@@ -58,15 +48,13 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
         const toStore: StoredSelections = {
           selectedCampaignId,
           lastViewedPage,
-          timelineEnabled,
-          selectedTimeIndex,
         };
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
       } catch (error) {
         console.error('Error saving selections to sessionStorage:', error);
       }
     }
-  }, [selectedCampaignId, lastViewedPage, timelineEnabled, selectedTimeIndex, isInitialized]);
+  }, [selectedCampaignId, lastViewedPage, isInitialized]);
 
   const setSelectedCampaignId = (id: string | null) => {
     setSelectedCampaignIdState(id);
@@ -76,23 +64,11 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
     setLastViewedPageState(page);
   };
 
-  const setTimelineEnabled = (enabled: boolean) => {
-    setTimelineEnabledState(enabled);
-  };
-
-  const setSelectedTimeIndex = (index: number) => {
-    setSelectedTimeIndexState(index);
-  };
-
   const value: SelectionContextType = {
     selectedCampaignId,
     setSelectedCampaignId,
     lastViewedPage,
     setLastViewedPage,
-    timelineEnabled,
-    setTimelineEnabled,
-    selectedTimeIndex,
-    setSelectedTimeIndex,
   };
 
   return (

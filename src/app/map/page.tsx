@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { toast } from 'sonner';
-import { Map as MapIcon, Loader2, Layers, Download, Activity, Clock, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { Map as MapIcon, Loader2, Layers, Download, Activity, Clock, SkipBack, SkipForward } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -73,11 +73,7 @@ function MapContent() {
   const { pollingEnabled } = usePolling();
   const { 
     selectedCampaignId, 
-    setSelectedCampaignId,
-    timelineEnabled: contextTimelineEnabled,
-    setTimelineEnabled: setContextTimelineEnabled,
-    selectedTimeIndex: contextTimeIndex,
-    setSelectedTimeIndex: setContextTimeIndex
+    setSelectedCampaignId
   } = useSelection();
   
   // Read filter state from URL
@@ -85,10 +81,6 @@ function MapContent() {
   const urlShowPreorder = searchParams.get('preorder');
   const urlShowNoService = searchParams.get('noService');
   const urlShowUnchecked = searchParams.get('unchecked');
-  
-  // Read timeline state from URL
-  const urlTimelineEnabled = searchParams.get('timeline');
-  const urlTimelineIndex = searchParams.get('timeIndex');
 
   const [selections, setSelections] = useState<Selection[]>([]);
   // Prioritize URL param, then context, then empty string
@@ -101,17 +93,12 @@ function MapContent() {
   const [activeJob, setActiveJob] = useState<BatchJob | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Timeline state - initialize from URL, then context, then defaults
-  const [timelineEnabled, setTimelineEnabled] = useState(
-    urlTimelineEnabled === 'true' ? true : urlTimelineEnabled === 'false' ? false : contextTimelineEnabled
-  );
+  // Timeline state - local only (no URL or context syncing)
+  const [timelineEnabled, setTimelineEnabled] = useState(false);
   const [timelineDates, setTimelineDates] = useState<Date[]>([]);
-  const [selectedTimeIndex, setSelectedTimeIndex] = useState<number>(
-    urlTimelineIndex ? parseInt(urlTimelineIndex, 10) : contextTimeIndex
-  );
+  const [selectedTimeIndex, setSelectedTimeIndex] = useState<number>(0);
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isLoadingTimelineData, setIsLoadingTimelineData] = useState(false);
 
   // Filter state - initialize from URL or default to true
   const [showServiceable, setShowServiceable] = useState(urlShowServiceable !== 'false');
@@ -125,9 +112,7 @@ function MapContent() {
     serviceable: boolean, 
     preorder: boolean, 
     noService: boolean, 
-    unchecked: boolean,
-    timelineOn?: boolean,
-    timeIndex?: number
+    unchecked: boolean
   ) => {
     const params = new URLSearchParams();
     if (selectionId) params.set('selection', selectionId);
@@ -135,10 +120,6 @@ function MapContent() {
     if (!preorder) params.set('preorder', 'false');
     if (!noService) params.set('noService', 'false');
     if (!unchecked) params.set('unchecked', 'false');
-    if (timelineOn) {
-      params.set('timeline', 'true');
-      if (timeIndex !== undefined) params.set('timeIndex', timeIndex.toString());
-    }
     
     const queryString = params.toString();
     router.replace(`/map${queryString ? `?${queryString}` : ''}`, { scroll: false });
@@ -148,8 +129,8 @@ function MapContent() {
   const handleSelectionChange = useCallback((value: string) => {
     setSelectedSelectionId(value);
     setSelectedCampaignId(value); // Save to context
-    updateUrl(value, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, selectedTimeIndex);
-  }, [showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, selectedTimeIndex, updateUrl, setSelectedCampaignId]);
+    updateUrl(value, showServiceable, showPreorder, showNoService, showUnchecked);
+  }, [showServiceable, showPreorder, showNoService, showUnchecked, updateUrl, setSelectedCampaignId]);
 
   // Handle filter changes
   const handleFilterChange = useCallback((filter: 'serviceable' | 'preorder' | 'noService' | 'unchecked', value: boolean) => {
@@ -163,8 +144,8 @@ function MapContent() {
     if (filter === 'noService') setShowNoService(value);
     if (filter === 'unchecked') setShowUnchecked(value);
     
-    updateUrl(selectedSelectionId, newServiceable, newPreorder, newNoService, newUnchecked, timelineEnabled, selectedTimeIndex);
-  }, [selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, selectedTimeIndex, updateUrl]);
+    updateUrl(selectedSelectionId, newServiceable, newPreorder, newNoService, newUnchecked);
+  }, [selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, updateUrl]);
 
   const loadSelections = useCallback(async () => {
     try {
@@ -192,36 +173,24 @@ function MapContent() {
     try {
       const dates = await getCheckTimeline(selectionId);
       console.log(`Map: Loaded ${dates.length} timeline dates for selection ${selectionId}`, dates);
-      setTimelineDates(dates);
-      if (dates.length > 0) {
-        // If URL has timeline index, validate it's in bounds
-        const urlIndex = urlTimelineIndex ? parseInt(urlTimelineIndex, 10) : null;
-        if (urlIndex !== null && urlIndex >= 0 && urlIndex < dates.length) {
-          setSelectedTimeIndex(urlIndex);
-          setContextTimeIndex(urlIndex); // Save to context
-        } else if (urlIndex === null) {
-          // No URL index, use context value if valid, otherwise default to most recent
-          const finalIndex = contextTimeIndex >= 0 && contextTimeIndex < dates.length 
-            ? contextTimeIndex 
-            : dates.length - 1;
-          setSelectedTimeIndex(finalIndex);
-          setContextTimeIndex(finalIndex); // Save to context
-        } else {
-          // URL index out of bounds, clamp to valid range
-          const clampedIndex = Math.min(Math.max(0, urlIndex), dates.length - 1);
-          setSelectedTimeIndex(clampedIndex);
-          setContextTimeIndex(clampedIndex); // Save to context
-          updateUrl(selectionId, showServiceable, showPreorder, showNoService, showUnchecked, urlTimelineEnabled === 'true', clampedIndex);
-        }
+      
+      // Add "current" entry as the latest date (now) to show most recent data
+      const datesWithCurrent = [...dates, new Date()];
+      setTimelineDates(datesWithCurrent);
+      
+      if (datesWithCurrent.length > 0) {
+        // Default to the "current" entry (last index)
+        setSelectedTimeIndex(datesWithCurrent.length - 1);
       }
     } catch (error) {
       console.error('Error loading timeline:', error);
     } finally {
       setIsLoadingTimeline(false);
     }
-  }, [urlTimelineIndex, urlTimelineEnabled, contextTimeIndex, showServiceable, showPreorder, showNoService, showUnchecked, updateUrl, setContextTimeIndex]);
+  }, []);
 
   const loadAddressesAtTime = useCallback(async (selectionId: string, date: Date) => {
+    setIsLoadingTimelineData(true);
     try {
       const addressesAtTime = await getAddressesAtTime(selectionId, date);
       // Convert to AddressWithCheck format
@@ -243,6 +212,8 @@ function MapContent() {
       setAddresses(converted as unknown as AddressWithCheck[]);
     } catch (error) {
       console.error('Error loading addresses at time:', error);
+    } finally {
+      setIsLoadingTimelineData(false);
     }
   }, []);
 
@@ -272,11 +243,8 @@ function MapContent() {
     if (preselectedId) {
       setSelectedSelectionId(preselectedId);
       setSelectedCampaignId(preselectedId);
-      if (urlTimelineEnabled) {
-        setContextTimelineEnabled(urlTimelineEnabled === 'true');
-      }
     }
-  }, [preselectedId, urlTimelineEnabled, setSelectedCampaignId, setContextTimelineEnabled]);
+  }, [preselectedId, setSelectedCampaignId]);
 
   // Restore from context if no URL param
   useEffect(() => {
@@ -302,9 +270,7 @@ function MapContent() {
         showServiceable,
         showPreorder,
         showNoService,
-        showUnchecked,
-        timelineEnabled,
-        selectedTimeIndex
+        showUnchecked
       );
     }, 500); // Debounce URL updates
 
@@ -313,7 +279,7 @@ function MapContent() {
         clearTimeout(urlUpdateTimeoutRef.current);
       }
     };
-  }, [selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, selectedTimeIndex, updateUrl]);
+  }, [selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, updateUrl]);
 
   // Load addresses when selection changes
   useEffect(() => {
@@ -321,7 +287,6 @@ function MapContent() {
       setAddresses([]);
       setActiveJob(null);
       setTimelineEnabled(false);
-      setContextTimelineEnabled(false); // Sync with context
       setTimelineDates([]);
       return;
     }
@@ -404,76 +369,20 @@ function MapContent() {
   const uncheckedCount = addresses.filter((a) => !a.checks[0]).length;
 
   const handleToggleTimeline = () => {
-    const newTimelineEnabled = !timelineEnabled;
-    setTimelineEnabled(newTimelineEnabled);
-    setContextTimelineEnabled(newTimelineEnabled); // Save to context
-    if (isPlaying) {
-      setIsPlaying(false);
-      if (playIntervalRef.current) {
-        clearInterval(playIntervalRef.current);
-      }
-    }
-    updateUrl(selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, newTimelineEnabled, selectedTimeIndex);
+    setTimelineEnabled(!timelineEnabled);
   };
 
   const handleTimelineChange = (value: number[]) => {
-    const newIndex = value[0];
-    setSelectedTimeIndex(newIndex);
-    setContextTimeIndex(newIndex); // Save to context
-    updateUrl(selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, newIndex);
-  };
-
-  const handlePlayPause = () => {
-    if (isPlaying) {
-      setIsPlaying(false);
-      if (playIntervalRef.current) {
-        clearInterval(playIntervalRef.current);
-        playIntervalRef.current = null;
-      }
-    } else {
-      setIsPlaying(true);
-      playIntervalRef.current = setInterval(() => {
-        setSelectedTimeIndex((prev) => {
-          if (prev >= timelineDates.length - 1) {
-            setIsPlaying(false);
-            if (playIntervalRef.current) {
-              clearInterval(playIntervalRef.current);
-              playIntervalRef.current = null;
-            }
-            return prev;
-          }
-          const newIndex = prev + 1;
-          setContextTimeIndex(newIndex); // Save to context
-          // Update URL as we play through timeline
-          updateUrl(selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, newIndex);
-          return newIndex;
-        });
-      }, 1500); // Advance every 1.5 seconds
-    }
+    setSelectedTimeIndex(value[0]);
   };
 
   const handleSkipBack = () => {
-    const newIndex = Math.max(0, selectedTimeIndex - 1);
-    setSelectedTimeIndex(newIndex);
-    setContextTimeIndex(newIndex); // Save to context
-    updateUrl(selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, newIndex);
+    setSelectedTimeIndex(Math.max(0, selectedTimeIndex - 1));
   };
 
   const handleSkipForward = () => {
-    const newIndex = Math.min(timelineDates.length - 1, selectedTimeIndex + 1);
-    setSelectedTimeIndex(newIndex);
-    setContextTimeIndex(newIndex); // Save to context
-    updateUrl(selectedSelectionId, showServiceable, showPreorder, showNoService, showUnchecked, timelineEnabled, newIndex);
+    setSelectedTimeIndex(Math.min(timelineDates.length - 1, selectedTimeIndex + 1));
   };
-
-  // Clean up play interval on unmount
-  useEffect(() => {
-    return () => {
-      if (playIntervalRef.current) {
-        clearInterval(playIntervalRef.current);
-      }
-    };
-  }, []);
 
   const handleExportGeoJSON = () => {
     if (filteredAddresses.length === 0) {
@@ -644,17 +553,6 @@ function MapContent() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={handlePlayPause}
-                    >
-                      {isPlaying ? (
-                        <Pause className="h-4 w-4" />
-                      ) : (
-                        <Play className="h-4 w-4" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
                       onClick={handleSkipForward}
                       disabled={selectedTimeIndex === timelineDates.length - 1}
                     >
@@ -671,10 +569,12 @@ function MapContent() {
                       className="flex-1"
                     />
                     <Badge variant="outline" className="min-w-[180px] justify-center">
-                      {format(timelineDates[selectedTimeIndex], 'MMM d, yyyy h:mm a')}
+                      {selectedTimeIndex === timelineDates.length - 1 
+                        ? 'Latest (Current)'
+                        : format(timelineDates[selectedTimeIndex], 'MMM d, yyyy h:mm a')}
                     </Badge>
                     <div className="text-sm text-muted-foreground">
-                      {selectedTimeIndex + 1} of {timelineDates.length} checks
+                      {selectedTimeIndex + 1} of {timelineDates.length} {selectedTimeIndex === timelineDates.length - 1 ? '(current)' : 'checks'}
                     </div>
                   </div>
                 </>
@@ -701,6 +601,16 @@ function MapContent() {
           </div>
         ) : (
           <ServiceMap addresses={filteredAddresses} />
+        )}
+
+        {/* Timeline Loading Overlay */}
+        {isLoadingTimelineData && (
+          <div className="absolute inset-0 z-[999] flex items-center justify-center bg-background/50 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm font-medium text-foreground">Loading timeline data...</p>
+            </div>
+          </div>
         )}
 
         {/* Stats Overlay */}
