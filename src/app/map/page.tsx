@@ -609,7 +609,7 @@ function MapContent() {
             clusteringOptions={{
               maxClusterRadius: 80,
               disableClusteringAtZoom: 17,
-              showCoverageOnHover: false,
+              showCoverageOnHover: true,
               spiderfyOnMaxZoom: true,
             }}
           />
