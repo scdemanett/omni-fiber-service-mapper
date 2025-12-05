@@ -127,10 +127,11 @@ function MapContent() {
 
   // Handle selection change
   const handleSelectionChange = useCallback((value: string) => {
+    userChangedSelectionRef.current = true; // Mark that user changed selection
     setSelectedSelectionId(value);
     setSelectedCampaignId(value); // Save to context
-    updateUrl(value, showServiceable, showPreorder, showNoService, showUnchecked);
-  }, [showServiceable, showPreorder, showNoService, showUnchecked, updateUrl, setSelectedCampaignId]);
+    // URL update is handled by the debounced effect below
+  }, [setSelectedCampaignId]);
 
   // Handle filter changes
   const handleFilterChange = useCallback((filter: 'serviceable' | 'preorder' | 'noService' | 'unchecked', value: boolean) => {
@@ -239,20 +240,22 @@ function MapContent() {
     loadSelections();
   }, [loadSelections]);
 
-  // Initialize from URL or context
+  // Initialize from URL or context (only on mount)
+  const hasInitializedRef = useRef(false);
+  const userChangedSelectionRef = useRef(false);
+  
   useEffect(() => {
-    if (preselectedId) {
-      setSelectedSelectionId(preselectedId);
-      setSelectedCampaignId(preselectedId);
+    if (!hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      if (preselectedId) {
+        setSelectedSelectionId(preselectedId);
+        setSelectedCampaignId(preselectedId);
+      } else if (selectedCampaignId && selectedCampaignId !== selectedSelectionId) {
+        setSelectedSelectionId(selectedCampaignId);
+      }
     }
-  }, [preselectedId, setSelectedCampaignId]);
-
-  // Restore from context if no URL param
-  useEffect(() => {
-    if (!preselectedId && selectedCampaignId && selectedSelectionId !== selectedCampaignId) {
-      setSelectedSelectionId(selectedCampaignId);
-    }
-  }, [preselectedId, selectedCampaignId, selectedSelectionId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
 
   // Update URL when state changes (with debounce to avoid loops)
   const urlUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
