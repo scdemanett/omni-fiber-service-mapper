@@ -161,7 +161,8 @@ function MapContent() {
 
   const loadAddresses = useCallback(async (selectionId: string) => {
     try {
-      const result = await getSelectionAddresses(selectionId, 1, 10000);
+      // Load all addresses - clustering handles performance regardless of count
+      const result = await getSelectionAddresses(selectionId, 1, Number.MAX_SAFE_INTEGER);
       setAddresses(result.addresses as unknown as AddressWithCheck[]);
     } catch (error) {
       console.error('Error loading addresses:', error);
@@ -600,7 +601,15 @@ function MapContent() {
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <ServiceMap addresses={filteredAddresses} />
+          <ServiceMap 
+            addresses={filteredAddresses}
+            clusteringOptions={{
+              maxClusterRadius: 80,
+              disableClusteringAtZoom: 17,
+              showCoverageOnHover: false,
+              spiderfyOnMaxZoom: true,
+            }}
+          />
         )}
 
         {/* Timeline Loading Overlay */}

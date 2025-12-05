@@ -231,3 +231,54 @@
     linear-gradient(oklch(0.30 0.03 290 / 0.3) 1px, transparent 1px),
     linear-gradient(90deg, oklch(0.30 0.03 290 / 0.3) 1px, transparent 1px);
 }
+
+/* Marker Cluster Styles */
+.custom-marker-cluster {
+  background: transparent !important;
+  border: none !important;
+}
+
+.cluster-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font-weight: 600;
+  font-size: 14px;
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.cluster-icon:hover {
+  transform: scale(1.1);
+}
+
+.cluster-icon span {
+  position: relative;
+  z-index: 10;
+}
+
+/* Cluster colors matching marker colors */
+.cluster-serviceable {
+  background-color: hsl(145 60% 45%);
+  border: 3px solid hsl(145 60% 35%);
+}
+
+.cluster-preorder {
+  background-color: hsl(45 90% 55%);
+  border: 3px solid hsl(45 90% 45%);
+  color: hsl(45 100% 15%);
+}
+
+.cluster-noservice {
+  background-color: hsl(0 70% 50%);
+  border: 3px solid hsl(0 70% 40%);
+}
+
+.cluster-unchecked {
+  background-color: hsl(240 5% 55%);
+  border: 3px solid hsl(240 5% 45%);
+}

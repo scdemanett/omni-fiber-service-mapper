@@ -12,6 +12,7 @@ export interface CreateSelectionResult {
 
 /**
  * Create a new address selection from filter criteria
+ * Uses batching to handle large selections (SQLite has expression tree limit of 10,000)
  */
 export async function createSelection(
   name: string,
@@ -43,17 +44,31 @@ export async function createSelection(
       return { success: false, error: 'No addresses match the filter criteria' };
     }
 
-    // Create the selection with connected addresses
+    // Create the selection first without addresses
     const selection = await prisma.addressSelection.create({
       data: {
         name,
         description,
         filterCriteria: JSON.stringify(filters),
-        addresses: {
-          connect: addresses.map((a) => ({ id: a.id })),
-        },
       },
     });
+
+    // Batch connect addresses to avoid SQLite expression tree limit
+    // SQLite has a limit of 10,000 nested expressions, so we batch at 5,000 for safety
+    const BATCH_SIZE = 5000;
+    const addressIds = addresses.map((a) => a.id);
+    
+    for (let i = 0; i < addressIds.length; i += BATCH_SIZE) {
+      const batch = addressIds.slice(i, i + BATCH_SIZE);
+      await prisma.addressSelection.update({
+        where: { id: selection.id },
+        data: {
+          addresses: {
+            connect: batch.map((id) => ({ id })),
+          },
+        },
+      });
+    }
 
     revalidatePath('/selections');
     revalidatePath('/');
@@ -74,6 +89,7 @@ export async function createSelection(
 
 /**
  * Get all selections with address counts and serviceability stats
+ * Optimized for large datasets using raw queries
  */
 export async function getSelections() {
   const selections = await prisma.addressSelection.findMany({
@@ -85,36 +101,103 @@ export async function getSelections() {
     },
   });
 
-  // Get serviceability stats for each selection
+  // Get serviceability stats for each selection using optimized queries
   const selectionsWithStats = await Promise.all(
     selections.map(async (selection) => {
-      const addresses = await prisma.address.findMany({
-        where: {
-          selections: { some: { id: selection.id } },
-        },
-        include: {
-          checks: {
-            orderBy: { checkedAt: 'desc' },
-            take: 1,
-          },
-        },
-      });
+      try {
+        const selectionId = selection.id;
+        
+        // Count checked addresses (have at least one check)
+        // Convert BigInt to number for JavaScript arithmetic
+        const checkedCount = await prisma.$queryRaw<[{ count: bigint }]>`
+          SELECT COUNT(DISTINCT a.id) as count
+          FROM addresses a
+          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
+          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
+          WHERE atas.B = ${selectionId}
+            AND (sc.error IS NULL OR sc.error = '')
+            AND sc.checkedAt = (
+              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
+            )
+        `.then(result => Number(result[0]?.count || 0));
 
-      const checkedCount = addresses.filter((a) => a.checks.length > 0).length;
-      const serviceableCount = addresses.filter((a) => a.checks[0]?.serviceabilityType === 'serviceable').length;
-      const preorderCount = addresses.filter((a) => a.checks[0]?.serviceabilityType === 'preorder').length;
-      const noServiceCount = addresses.filter((a) => a.checks[0]?.serviceabilityType === 'none').length;
-      const errorCount = addresses.filter((a) => a.checks[0]?.error != null && a.checks[0]?.error !== '').length;
+        const serviceableCount = await prisma.$queryRaw<[{ count: bigint }]>`
+          SELECT COUNT(DISTINCT a.id) as count
+          FROM addresses a
+          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
+          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
+          WHERE atas.B = ${selectionId}
+            AND sc.serviceabilityType = 'serviceable'
+            AND (sc.error IS NULL OR sc.error = '')
+            AND sc.checkedAt = (
+              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
+            )
+        `.then(result => Number(result[0]?.count || 0));
 
-      return {
-        ...selection,
-        checkedCount,
-        serviceableCount,
-        preorderCount,
-        noServiceCount,
-        errorCount,
-        uncheckedCount: addresses.length - checkedCount,
-      };
+        const preorderCount = await prisma.$queryRaw<[{ count: bigint }]>`
+          SELECT COUNT(DISTINCT a.id) as count
+          FROM addresses a
+          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
+          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
+          WHERE atas.B = ${selectionId}
+            AND sc.serviceabilityType = 'preorder'
+            AND (sc.error IS NULL OR sc.error = '')
+            AND sc.checkedAt = (
+              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
+            )
+        `.then(result => Number(result[0]?.count || 0));
+
+        const noServiceCount = await prisma.$queryRaw<[{ count: bigint }]>`
+          SELECT COUNT(DISTINCT a.id) as count
+          FROM addresses a
+          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
+          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
+          WHERE atas.B = ${selectionId}
+            AND sc.serviceabilityType = 'none'
+            AND (sc.error IS NULL OR sc.error = '')
+            AND sc.checkedAt = (
+              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
+            )
+        `.then(result => Number(result[0]?.count || 0));
+
+        const errorCount = await prisma.$queryRaw<[{ count: bigint }]>`
+          SELECT COUNT(DISTINCT a.id) as count
+          FROM addresses a
+          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
+          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
+          WHERE atas.B = ${selectionId}
+            AND sc.error IS NOT NULL
+            AND sc.error != ''
+            AND sc.checkedAt = (
+              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
+            )
+        `.then(result => Number(result[0]?.count || 0));
+
+        const totalAddresses = selection._count.addresses;
+        const uncheckedCount = totalAddresses - checkedCount;
+
+        return {
+          ...selection,
+          checkedCount,
+          serviceableCount,
+          preorderCount,
+          noServiceCount,
+          errorCount,
+          uncheckedCount,
+        };
+      } catch (error) {
+        console.error(`Error loading stats for selection ${selection.id}:`, error);
+        // Return safe defaults on error
+        return {
+          ...selection,
+          checkedCount: 0,
+          serviceableCount: 0,
+          preorderCount: 0,
+          noServiceCount: 0,
+          errorCount: 0,
+          uncheckedCount: selection._count.addresses,
+        };
+      }
     })
   );
 
