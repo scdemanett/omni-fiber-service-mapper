@@ -30,19 +30,19 @@ Visit [http://localhost:3000](http://localhost:3000) to get started!
 ## Screenshots
 
 ### Dashboard
-![Dashboard view showing overview statistics and quick access to all features](screenshots/dashboard.jpg?v=1)
+![Dashboard view showing overview statistics and quick access to all features](/screenshots/dashboard.jpg?v=1)
 
 ### GeoJSON Upload
-![Upload interface for importing address data from GeoJSON files](screenshots/upload.jpg?v=1)
+![Upload interface for importing address data from GeoJSON files](/screenshots/upload.jpg?v=1)
 
 ### Address Selections
-![Selection management interface for creating and managing address campaigns](screenshots/selections.jpg?v=1)
+![Selection management interface for creating and managing address campaigns](/screenshots/selections.jpg?v=1)
 
 ### Batch Serviceability Checker
-![Batch checker interface with progress tracking and pause/resume controls](screenshots/checker.jpg?v=1)
+![Batch checker interface with progress tracking and pause/resume controls](/screenshots/checker.jpg?v=1)
 
 ### Interactive Map with Timeline
-![Interactive map with color-coded service availability markers and filtering options](screenshots/map.jpg?v=1)
+![Interactive map with color-coded service availability markers and filtering options](/screenshots/map.jpg?v=1)
 
 ## Features
 
