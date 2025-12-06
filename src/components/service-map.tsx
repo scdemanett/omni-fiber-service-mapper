@@ -5,7 +5,7 @@ import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaf
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 
 interface AddressWithCheck {
   id: string;
@@ -20,6 +20,8 @@ interface AddressWithCheck {
     status: string | null;
     cstatus: string | null;
     checkedAt: Date;
+    apiCreateDate: Date | null;
+    apiUpdateDate: Date | null;
   }[];
 }
 
@@ -120,7 +122,7 @@ export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapP
       {/* Unchecked addresses cluster - gray */}
       <MarkerClusterGroup
         {...clusterConfig}
-        iconCreateFunction={(cluster) => {
+        iconCreateFunction={(cluster: any) => {
           const count = cluster.getChildCount();
           return L.divIcon({
             html: `<div class="cluster-icon cluster-unchecked"><span>${count}</span></div>`,
@@ -156,7 +158,7 @@ export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapP
       {/* No service addresses cluster - red */}
       <MarkerClusterGroup
         {...clusterConfig}
-        iconCreateFunction={(cluster) => {
+        iconCreateFunction={(cluster: any) => {
           const count = cluster.getChildCount();
           return L.divIcon({
             html: `<div class="cluster-icon cluster-noservice"><span>${count}</span></div>`,
@@ -192,8 +194,20 @@ export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapP
                   Request Future Service
                 </a>
                 {addr.checks[0] && (
-                  <div className="text-xs text-gray-500">
-                    Checked {formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })}
+                  <div className="space-y-0.5">
+                    {addr.checks[0].apiCreateDate && (
+                      <div className="text-xs text-gray-500">
+                        Created {format(new Date(addr.checks[0].apiCreateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiCreateDate), { addSuffix: true })})
+                      </div>
+                    )}
+                    {addr.checks[0].apiUpdateDate && (
+                      <div className="text-xs text-gray-500">
+                        Updated {format(new Date(addr.checks[0].apiUpdateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiUpdateDate), { addSuffix: true })})
+                      </div>
+                    )}
+                    <div className="text-xs text-gray-500">
+                      Checked {format(new Date(addr.checks[0].checkedAt), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })})
+                    </div>
                   </div>
                 )}
               </div>
@@ -205,7 +219,7 @@ export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapP
       {/* Preorder addresses cluster - yellow */}
       <MarkerClusterGroup
         {...clusterConfig}
-        iconCreateFunction={(cluster) => {
+        iconCreateFunction={(cluster: any) => {
           const count = cluster.getChildCount();
           return L.divIcon({
             html: `<div class="cluster-icon cluster-preorder"><span>${count}</span></div>`,
@@ -244,8 +258,20 @@ export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapP
                   Referral link - We both get $50 gift cards!
                 </div>
                 {addr.checks[0] && (
-                  <div className="text-xs text-gray-500">
-                    Checked {formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })}
+                  <div className="space-y-0.5">
+                    {addr.checks[0].apiCreateDate && (
+                      <div className="text-xs text-gray-500">
+                        Created {format(new Date(addr.checks[0].apiCreateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiCreateDate), { addSuffix: true })})
+                      </div>
+                    )}
+                    {addr.checks[0].apiUpdateDate && (
+                      <div className="text-xs text-gray-500">
+                        Updated {format(new Date(addr.checks[0].apiUpdateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiUpdateDate), { addSuffix: true })})
+                      </div>
+                    )}
+                    <div className="text-xs text-gray-500">
+                      Checked {format(new Date(addr.checks[0].checkedAt), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })})
+                    </div>
                   </div>
                 )}
               </div>
@@ -257,7 +283,7 @@ export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapP
       {/* Serviceable addresses cluster - green */}
       <MarkerClusterGroup
         {...clusterConfig}
-        iconCreateFunction={(cluster) => {
+        iconCreateFunction={(cluster: any) => {
           const count = cluster.getChildCount();
           return L.divIcon({
             html: `<div class="cluster-icon cluster-serviceable"><span>${count}</span></div>`,
@@ -296,8 +322,20 @@ export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapP
                   Referral link - We both get $50 gift cards!
                 </div>
                 {addr.checks[0] && (
-                  <div className="text-xs text-gray-500">
-                    Checked {formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })}
+                  <div className="space-y-0.5">
+                    {addr.checks[0].apiCreateDate && (
+                      <div className="text-xs text-gray-500">
+                        Created {format(new Date(addr.checks[0].apiCreateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiCreateDate), { addSuffix: true })})
+                      </div>
+                    )}
+                    {addr.checks[0].apiUpdateDate && (
+                      <div className="text-xs text-gray-500">
+                        Updated {format(new Date(addr.checks[0].apiUpdateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiUpdateDate), { addSuffix: true })})
+                      </div>
+                    )}
+                    <div className="text-xs text-gray-500">
+                      Checked {format(new Date(addr.checks[0].checkedAt), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })})
+                    </div>
                   </div>
                 )}
               </div>

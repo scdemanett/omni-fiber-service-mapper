@@ -63,6 +63,8 @@ interface AddressWithCheck {
     status: string | null;
     cstatus: string | null;
     checkedAt: Date;
+    apiCreateDate: Date | null;
+    apiUpdateDate: Date | null;
   }[];
 }
 
