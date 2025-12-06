@@ -181,19 +181,20 @@ export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapP
               <div className="min-w-[200px] space-y-2">
                 <div className="font-semibold">{addr.addressString}</div>
                 <div className="rounded bg-red-100 px-2 py-1 text-sm text-red-800">
-                  No Service Available
+                  ❌ No Service Available
                 </div>
+                <a 
+                  href="https://www.omnifiber.com/future-service/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block text-center text-sm text-blue-600 hover:text-blue-800 underline"
+                >
+                  Request Future Service
+                </a>
                 {addr.checks[0] && (
-                  <>
-                    {addr.checks[0].cstatus && (
-                      <div className="text-xs text-gray-600">
-                        Status: {addr.checks[0].cstatus}
-                      </div>
-                    )}
-                    <div className="text-xs text-gray-500">
-                      Checked {formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })}
-                    </div>
-                  </>
+                  <div className="text-xs text-gray-500">
+                    Checked {formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })}
+                  </div>
                 )}
               </div>
             </Popup>
@@ -229,19 +230,23 @@ export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapP
               <div className="min-w-[200px] space-y-2">
                 <div className="font-semibold">{addr.addressString}</div>
                 <div className="rounded bg-yellow-100 px-2 py-1 text-sm text-yellow-800">
-                  ?? Preorder / Planned Service
+                  📅 Preorder / Planned Service
+                </div>
+                <a 
+                  href="https://refer.omnifiber.com/stevendemanett" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block text-center text-sm text-blue-600 hover:text-blue-800 underline"
+                >
+                  Order Service
+                </a>
+                <div className="text-xs text-gray-500 text-center italic">
+                  Referral link - We both get $50 gift cards!
                 </div>
                 {addr.checks[0] && (
-                  <>
-                    {addr.checks[0].cstatus && (
-                      <div className="text-xs text-gray-600">
-                        Status: {addr.checks[0].cstatus}
-                      </div>
-                    )}
-                    <div className="text-xs text-gray-500">
-                      Checked {formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })}
-                    </div>
-                  </>
+                  <div className="text-xs text-gray-500">
+                    Checked {formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })}
+                  </div>
                 )}
               </div>
             </Popup>
@@ -277,19 +282,23 @@ export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapP
               <div className="min-w-[200px] space-y-2">
                 <div className="font-semibold">{addr.addressString}</div>
                 <div className="rounded bg-green-100 px-2 py-1 text-sm text-green-800">
-                  ? Serviceable
+                  ✓ Serviceable
+                </div>
+                <a 
+                  href="https://refer.omnifiber.com/stevendemanett" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block text-center text-sm text-blue-600 hover:text-blue-800 underline"
+                >
+                  Order Service
+                </a>
+                <div className="text-xs text-gray-500 text-center italic">
+                  Referral link - We both get $50 gift cards!
                 </div>
                 {addr.checks[0] && (
-                  <>
-                    {addr.checks[0].salesType && (
-                      <div className="text-xs text-gray-600">
-                        Type: {addr.checks[0].salesType}
-                      </div>
-                    )}
-                    <div className="text-xs text-gray-500">
-                      Checked {formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })}
-                    </div>
-                  </>
+                  <div className="text-xs text-gray-500">
+                    Checked {formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })}
+                  </div>
                 )}
               </div>
             </Popup>
