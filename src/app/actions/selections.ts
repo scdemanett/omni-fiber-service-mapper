@@ -245,6 +245,136 @@ export async function deleteSelection(selectionId: string) {
 }
 
 /**
+ * Update a selection's name and/or description
+ */
+export async function updateSelection(
+  selectionId: string,
+  name: string,
+  description: string | null
+) {
+  try {
+    await prisma.addressSelection.update({
+      where: { id: selectionId },
+      data: {
+        name,
+        description,
+      },
+    });
+
+    revalidatePath('/selections');
+    revalidatePath('/');
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating selection:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+/**
+ * Add additional addresses to an existing selection from the same or different source
+ */
+export async function addAddressesToSelection(
+  selectionId: string,
+  sourceId: string,
+  filters: { city?: string[]; region?: string[]; postcode?: string[] }
+): Promise<CreateSelectionResult> {
+  try {
+    // Get the selection to verify it exists
+    const selection = await prisma.addressSelection.findUnique({
+      where: { id: selectionId },
+      include: {
+        addresses: {
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!selection) {
+      return { success: false, error: 'Selection not found' };
+    }
+
+    // Get existing address IDs in this selection
+    const existingAddressIds = new Set(selection.addresses.map((a) => a.id));
+
+    // Build the where clause for finding new addresses
+    const where: Record<string, unknown> = { sourceId };
+    
+    if (filters.city?.length) {
+      where.city = { in: filters.city };
+    }
+    if (filters.region?.length) {
+      where.region = { in: filters.region };
+    }
+    if (filters.postcode?.length) {
+      where.postcode = { in: filters.postcode };
+    }
+
+    // Get matching address IDs
+    const matchingAddresses = await prisma.address.findMany({
+      where,
+      select: { id: true },
+    });
+
+    // Filter out addresses that are already in the selection
+    const newAddressIds = matchingAddresses
+      .map((a) => a.id)
+      .filter((id) => !existingAddressIds.has(id));
+
+    if (newAddressIds.length === 0) {
+      return { success: false, error: 'No new addresses match the filter criteria (all matching addresses are already in the selection)' };
+    }
+
+    // Batch connect new addresses to avoid SQLite expression tree limit
+    const BATCH_SIZE = 5000;
+    
+    for (let i = 0; i < newAddressIds.length; i += BATCH_SIZE) {
+      const batch = newAddressIds.slice(i, i + BATCH_SIZE);
+      await prisma.addressSelection.update({
+        where: { id: selectionId },
+        data: {
+          addresses: {
+            connect: batch.map((id) => ({ id })),
+          },
+        },
+      });
+    }
+
+    // Update the filter criteria to reflect the addition
+    const currentFilters = JSON.parse(selection.filterCriteria || '{}');
+    const updatedFilters = {
+      ...currentFilters,
+      additionalSources: [
+        ...(currentFilters.additionalSources || []),
+        { sourceId, filters, addedAt: new Date().toISOString() },
+      ],
+    };
+
+    await prisma.addressSelection.update({
+      where: { id: selectionId },
+      data: {
+        filterCriteria: JSON.stringify(updatedFilters),
+      },
+    });
+
+    revalidatePath('/selections');
+    revalidatePath('/');
+
+    return {
+      success: true,
+      selectionId: selection.id,
+      addressCount: newAddressIds.length,
+    };
+  } catch (error) {
+    console.error('Error adding addresses to selection:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
  * Get addresses for a selection with pagination
  */
 export async function getSelectionAddresses(

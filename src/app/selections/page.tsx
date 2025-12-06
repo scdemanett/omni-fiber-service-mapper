@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Filter, Plus, Trash2, Loader2, CheckCircle, AlertCircle, Clock, Play, XCircle } from 'lucide-react';
+import { Filter, Plus, Trash2, Loader2, CheckCircle, AlertCircle, Clock, Play, XCircle, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -28,7 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { getGeoJSONSources, getUniquePropertyValues, getAddressCountByFilter } from '@/app/actions/geojson';
-import { createSelection, getSelections, deleteSelection } from '@/app/actions/selections';
+import { createSelection, getSelections, deleteSelection, updateSelection, addAddressesToSelection } from '@/app/actions/selections';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
 
@@ -66,6 +66,8 @@ function SelectionsContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingSelection, setEditingSelection] = useState<Selection | null>(null);
 
   // Create selection form state
   const [selectedSourceId, setSelectedSourceId] = useState<string>('');
@@ -75,6 +77,16 @@ function SelectionsContent() {
   const [selectedCities, setSelectedCities] = useState<string[]>([]);
   const [previewCount, setPreviewCount] = useState<number | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+
+  // Edit selection form state
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editSourceId, setEditSourceId] = useState<string>('');
+  const [editAvailableCities, setEditAvailableCities] = useState<string[]>([]);
+  const [editSelectedCities, setEditSelectedCities] = useState<string[]>([]);
+  const [editPreviewCount, setEditPreviewCount] = useState<number | null>(null);
+  const [isLoadingEditPreview, setIsLoadingEditPreview] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -151,6 +163,52 @@ function SelectionsContent() {
     return () => clearTimeout(debounce);
   }, [selectedSourceId, selectedCities]);
 
+  // Load cities when edit source is selected
+  useEffect(() => {
+    if (!editSourceId) {
+      setEditAvailableCities([]);
+      setEditSelectedCities([]);
+      return;
+    }
+
+    const loadCities = async () => {
+      try {
+        const cities = await getUniquePropertyValues(editSourceId, 'city');
+        setEditAvailableCities(cities);
+      } catch (error) {
+        console.error('Error loading cities for edit:', error);
+      }
+    };
+
+    loadCities();
+  }, [editSourceId]);
+
+  // Update edit preview count when filters change
+  useEffect(() => {
+    if (!editSourceId || editSelectedCities.length === 0) {
+      setEditPreviewCount(null);
+      return;
+    }
+
+    const updatePreview = async () => {
+      setIsLoadingEditPreview(true);
+      try {
+        const count = await getAddressCountByFilter(editSourceId, {
+          city: editSelectedCities,
+        });
+        setEditPreviewCount(count);
+      } catch (error) {
+        console.error('Error getting edit preview count:', error);
+        setEditPreviewCount(null);
+      } finally {
+        setIsLoadingEditPreview(false);
+      }
+    };
+
+    const debounce = setTimeout(updatePreview, 300);
+    return () => clearTimeout(debounce);
+  }, [editSourceId, editSelectedCities]);
+
   const handleCreateSelection = async () => {
     if (!selectedSourceId) {
       toast.error('Please select a source');
@@ -205,6 +263,73 @@ function SelectionsContent() {
     }
   };
 
+  const handleEditSelection = (selection: Selection) => {
+    setEditingSelection(selection);
+    setEditName(selection.name);
+    setEditDescription(selection.description || '');
+    setEditSourceId('');
+    setEditSelectedCities([]);
+    setEditPreviewCount(null);
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdateSelection = async () => {
+    if (!editingSelection) return;
+
+    if (!editName.trim()) {
+      toast.error('Please enter a selection name');
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      // Update name and description
+      const updateResult = await updateSelection(
+        editingSelection.id,
+        editName.trim(),
+        editDescription.trim() || null
+      );
+
+      if (!updateResult.success) {
+        toast.error(updateResult.error || 'Failed to update selection');
+        setIsUpdating(false);
+        return;
+      }
+
+      // Add addresses if source and cities are selected
+      if (editSourceId && editSelectedCities.length > 0) {
+        const addResult = await addAddressesToSelection(
+          editingSelection.id,
+          editSourceId,
+          { city: editSelectedCities }
+        );
+
+        if (addResult.success) {
+          toast.success(
+            `Updated selection and added ${addResult.addressCount?.toLocaleString()} new addresses`
+          );
+        } else {
+          // Still show success for the name update
+          toast.warning(
+            `Updated selection name, but: ${addResult.error || 'Failed to add addresses'}`
+          );
+        }
+      } else {
+        toast.success('Selection updated');
+      }
+
+      setEditDialogOpen(false);
+      setEditingSelection(null);
+      resetEditForm();
+      loadData();
+    } catch (error) {
+      console.error('Error updating selection:', error);
+      toast.error('Failed to update selection');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const resetForm = () => {
     setSelectedSourceId('');
     setSelectionName('');
@@ -213,8 +338,22 @@ function SelectionsContent() {
     setPreviewCount(null);
   };
 
+  const resetEditForm = () => {
+    setEditName('');
+    setEditDescription('');
+    setEditSourceId('');
+    setEditSelectedCities([]);
+    setEditPreviewCount(null);
+  };
+
   const toggleCity = (city: string) => {
     setSelectedCities((prev) =>
+      prev.includes(city) ? prev.filter((c) => c !== city) : [...prev, city]
+    );
+  };
+
+  const toggleEditCity = (city: string) => {
+    setEditSelectedCities((prev) =>
       prev.includes(city) ? prev.filter((c) => c !== city) : [...prev, city]
     );
   };
@@ -347,6 +486,132 @@ function SelectionsContent() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit Selection</DialogTitle>
+              <DialogDescription>
+                Update the selection name, description, and optionally add more addresses
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Selection Name</Label>
+                <Input
+                  id="edit-name"
+                  placeholder="e.g., Painesville City December 2025"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-description">Description (optional)</Label>
+                <Input
+                  id="edit-description"
+                  placeholder="Notes about this selection"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                />
+              </div>
+
+              <div className="border-t pt-4">
+                <h4 className="mb-2 text-sm font-semibold">Add More Addresses (optional)</h4>
+                <p className="mb-4 text-sm text-muted-foreground">
+                  Select a source and cities to add additional addresses to this selection
+                </p>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-source">Source</Label>
+                    <Select value={editSourceId} onValueChange={setEditSourceId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a source (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sources.map((source) => (
+                          <SelectItem key={source.id} value={source.id}>
+                            {source.name} ({source._count.addresses.toLocaleString()} addresses)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {editAvailableCities.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>Filter by City</Label>
+                      <ScrollArea className="h-48 rounded-md border p-4">
+                        <div className="space-y-2">
+                          {editAvailableCities.map((city) => (
+                            <div key={city} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`edit-city-${city}`}
+                                checked={editSelectedCities.includes(city)}
+                                onCheckedChange={() => toggleEditCity(city)}
+                              />
+                              <label
+                                htmlFor={`edit-city-${city}`}
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                              >
+                                {city}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                      {editSelectedCities.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {editSelectedCities.map((city) => (
+                            <Badge key={city} variant="secondary" className="text-xs">
+                              {city}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {editPreviewCount !== null && (
+                    <div className="rounded-lg bg-muted p-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">New addresses to add:</span>
+                        {isLoadingEditPreview ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <span className="text-lg font-bold text-primary">
+                            {editPreviewCount.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        (Duplicates will be automatically excluded)
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleUpdateSelection} disabled={isUpdating}>
+                {isUpdating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  'Update Selection'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {isLoading ? (
@@ -380,14 +645,24 @@ function SelectionsContent() {
                         <CardDescription>{selection.description}</CardDescription>
                       )}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDeleteSelection(selection.id, selection.name)}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEditSelection(selection)}
+                        className="text-muted-foreground hover:text-primary"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDeleteSelection(selection.id, selection.name)}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
