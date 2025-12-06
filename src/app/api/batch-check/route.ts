@@ -9,7 +9,7 @@ import {
 } from '@/lib/batch-processor';
 import { isServiceable, type ShopperResponse } from '@/lib/omni-decoder';
 
-const DELAY_MS = 2000; // 2 seconds between requests
+const DELAY_MS = 500; // 0.5 seconds between requests
 
 // Route segment config
 export const maxDuration = 300; // 5 minutes max for long-running batch jobs

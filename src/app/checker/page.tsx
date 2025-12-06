@@ -516,36 +516,47 @@ function CheckerContent() {
               <CardContent>
                 <ScrollArea className="h-[200px]">
                   <div className="space-y-2">
-                    {allJobs.slice(0, 10).map((job) => (
-                      <div
-                        key={job.id}
-                        className={`flex items-center justify-between rounded-lg border p-2 text-xs ${
-                          currentJob?.id === job.id ? 'border-primary bg-primary/5' : ''
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          {job.status === 'running' ? (
-                            <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                          ) : job.status === 'completed' ? (
-                            <CheckCircle className="h-3 w-3 text-serviceable" />
-                          ) : job.status === 'paused' ? (
-                            <Pause className="h-3 w-3 text-preorder" />
-                          ) : job.status === 'cancelled' ? (
-                            <XCircle className="h-3 w-3 text-muted-foreground" />
-                          ) : job.status === 'pending' ? (
-                            <Clock className="h-3 w-3 text-muted-foreground" />
-                          ) : job.status === 'failed' ? (
-                            <AlertCircle className="h-3 w-3 text-not-serviceable" />
-                          ) : (
-                            <Clock className="h-3 w-3 text-muted-foreground" />
-                          )}
-                          <span className="truncate">{job.name}</span>
+                    {allJobs.slice(0, 10).map((job) => {
+                      // Extract the timestamp from the original job name
+                      const nameParts = job.name.split(' - ');
+                      const timestamp = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+                      // Find the current selection name
+                      const jobSelection = selections.find((s) => s.id === job.selectionId);
+                      const currentSelectionName = jobSelection?.name || nameParts[0];
+                      // Combine current selection name with original timestamp
+                      const displayName = timestamp ? `${currentSelectionName} - ${timestamp}` : currentSelectionName;
+                      
+                      return (
+                        <div
+                          key={job.id}
+                          className={`flex items-center justify-between rounded-lg border p-2 text-xs ${
+                            currentJob?.id === job.id ? 'border-primary bg-primary/5' : ''
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            {job.status === 'running' ? (
+                              <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                            ) : job.status === 'completed' ? (
+                              <CheckCircle className="h-3 w-3 text-serviceable" />
+                            ) : job.status === 'paused' ? (
+                              <Pause className="h-3 w-3 text-preorder" />
+                            ) : job.status === 'cancelled' ? (
+                              <XCircle className="h-3 w-3 text-muted-foreground" />
+                            ) : job.status === 'pending' ? (
+                              <Clock className="h-3 w-3 text-muted-foreground" />
+                            ) : job.status === 'failed' ? (
+                              <AlertCircle className="h-3 w-3 text-not-serviceable" />
+                            ) : (
+                              <Clock className="h-3 w-3 text-muted-foreground" />
+                            )}
+                            <span className="truncate">{displayName}</span>
+                          </div>
+                          <Badge variant="outline" className="text-[10px]">
+                            {job.status}
+                          </Badge>
                         </div>
-                        <Badge variant="outline" className="text-[10px]">
-                          {job.status}
-                        </Badge>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </ScrollArea>
               </CardContent>
@@ -573,7 +584,18 @@ function CheckerContent() {
                     ) : (
                       <AlertCircle className="h-5 w-5 text-destructive" />
                     )}
-                    <span className="truncate">{currentJob.name}</span>
+                    <span className="truncate">
+                      {(() => {
+                        // Extract the timestamp from the original job name (everything after the last " - ")
+                        const nameParts = currentJob.name.split(' - ');
+                        const timestamp = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+                        // Find the current selection name
+                        const jobSelection = selections.find((s) => s.id === currentJob.selectionId);
+                        const currentSelectionName = jobSelection?.name || nameParts[0];
+                        // Combine current selection name with original timestamp
+                        return timestamp ? `${currentSelectionName} - ${timestamp}` : currentSelectionName;
+                      })()}
+                    </span>
                   </CardTitle>
                   <Badge
                     variant={
@@ -633,7 +655,7 @@ function CheckerContent() {
                   <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     <span>
-                      Checking addresses... (~2 seconds per address)
+                      Checking addresses... (~0.5 seconds per address)
                     </span>
                   </div>
                 )}

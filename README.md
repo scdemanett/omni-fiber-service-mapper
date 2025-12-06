@@ -68,7 +68,7 @@ Visit [http://localhost:3000](http://localhost:3000) to get started!
 - Pause/resume capability
 - Live progress tracking
 - Smart error handling (errors don't pollute data)
-- Rate-limited API calls (2 seconds between requests)
+- Rate-limited API calls (0.5 seconds between requests)
 
 ### 🎯 Address Selection & Management
 - Upload GeoJSON files with address data

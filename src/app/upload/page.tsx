@@ -4,14 +4,14 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { toast } from 'sonner';
-import { Upload, FileJson, Trash2, Loader2, CheckCircle, ArrowRight, Filter } from 'lucide-react';
+import { Upload, FileJson, Trash2, Loader2, CheckCircle, ArrowRight, Filter, Pencil, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { getGeoJSONSources, deleteGeoJSONSource } from '@/app/actions/geojson';
+import { getGeoJSONSources, deleteGeoJSONSource, renameGeoJSONSource } from '@/app/actions/geojson';
 import { useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
@@ -50,6 +50,8 @@ export default function UploadPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [justUploaded, setJustUploaded] = useState(false);
   const [uploadedSourceId, setUploadedSourceId] = useState<string | null>(null);
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
 
   const loadSources = useCallback(async () => {
     try {
@@ -233,7 +235,44 @@ export default function UploadPage() {
     }
   };
 
+  const handleStartEdit = (e: React.MouseEvent, sourceId: string, currentName: string) => {
+    e.stopPropagation(); // Prevent navigation
+    setEditingSourceId(sourceId);
+    setEditingName(currentName);
+  };
+
+  const handleCancelEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingSourceId(null);
+    setEditingName('');
+  };
+
+  const handleSaveEdit = async (e: React.MouseEvent, sourceId: string) => {
+    e.stopPropagation();
+    
+    if (!editingName.trim()) {
+      toast.error('Name cannot be empty');
+      return;
+    }
+
+    try {
+      const result = await renameGeoJSONSource(sourceId, editingName);
+      if (result.success) {
+        toast.success('Source renamed');
+        setEditingSourceId(null);
+        setEditingName('');
+        loadSources();
+      } else {
+        toast.error(result.error || 'Rename failed');
+      }
+    } catch (error) {
+      console.error('Rename error:', error);
+      toast.error('Rename failed');
+    }
+  };
+
   const handleSourceClick = (sourceId: string) => {
+    if (editingSourceId === sourceId) return; // Don't navigate when editing
     router.push(`/selections?source=${sourceId}`);
   };
 
@@ -395,14 +434,35 @@ export default function UploadPage() {
                   <div
                     key={source.id}
                     onClick={() => handleSourceClick(source.id)}
-                    className="group flex cursor-pointer items-center justify-between rounded-lg border bg-card p-4 transition-all hover:border-primary hover:bg-primary/5"
+                    className={`group flex cursor-pointer items-center justify-between rounded-lg border bg-card p-4 transition-all ${
+                      editingSourceId === source.id 
+                        ? 'border-primary' 
+                        : 'hover:border-primary hover:bg-primary/5'
+                    }`}
                   >
-                    <div className="space-y-1">
+                    <div className="flex-1 space-y-1">
                       <div className="flex items-center gap-2">
                         <CheckCircle className="h-4 w-4 text-serviceable" />
-                        <span className="font-medium group-hover:text-primary">
-                          {source.name}
-                        </span>
+                        {editingSourceId === source.id ? (
+                          <Input
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="h-8 max-w-md"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleSaveEdit(e as unknown as React.MouseEvent, source.id);
+                              } else if (e.key === 'Escape') {
+                                handleCancelEdit(e as unknown as React.MouseEvent);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <span className="font-medium group-hover:text-primary">
+                            {source.name}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-sm text-muted-foreground">
                         <span>{source._count.addresses.toLocaleString()} addresses</span>
@@ -413,19 +473,50 @@ export default function UploadPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="hidden items-center gap-1 text-sm text-primary group-hover:flex">
-                        <Filter className="h-4 w-4" />
-                        <span>Create Selection</span>
-                        <ArrowRight className="h-4 w-4" />
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => handleDelete(e, source.id, source.name)}
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {editingSourceId === source.id ? (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => handleSaveEdit(e, source.id)}
+                            className="text-serviceable hover:text-serviceable"
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={handleCancelEdit}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <div className="hidden items-center gap-1 text-sm text-primary group-hover:flex">
+                            <Filter className="h-4 w-4" />
+                            <span>Create Selection</span>
+                            <ArrowRight className="h-4 w-4" />
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => handleStartEdit(e, source.id, source.name)}
+                            className="text-muted-foreground hover:text-primary"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => handleDelete(e, source.id, source.name)}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}

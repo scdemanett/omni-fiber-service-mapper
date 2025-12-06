@@ -104,6 +104,31 @@ export async function getGeoJSONSources() {
 }
 
 /**
+ * Rename a GeoJSON source
+ */
+export async function renameGeoJSONSource(sourceId: string, newName: string) {
+  try {
+    if (!newName.trim()) {
+      return { success: false, error: 'Name cannot be empty' };
+    }
+
+    await prisma.geoJSONSource.update({
+      where: { id: sourceId },
+      data: { name: newName.trim() },
+    });
+    
+    revalidatePath('/upload');
+    revalidatePath('/selections');
+    revalidatePath('/');
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error renaming source:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+/**
  * Delete a GeoJSON source and all its addresses
  */
 export async function deleteGeoJSONSource(sourceId: string) {

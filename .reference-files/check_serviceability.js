@@ -5,7 +5,7 @@ const { promisify } = require('util');
 
 // Configuration
 const API_URL = 'https://shop.omnifiber.com/api/getCatalog';
-const DELAY_MS = 2000; // Delay between requests (2 seconds to be respectful to the API)
+const DELAY_MS = 500; // Delay between requests (0.5 seconds to be respectful to the API)
 const INPUT_FILE = path.join(__dirname, '..', 'input', 'addresses.txt');
 const OUTPUT_FILE = path.join(__dirname, '..', 'output', 'servicable_addresses.json');
 const RESULTS_FILE = path.join(__dirname, '..', 'output', 'all_results.json');

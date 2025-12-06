@@ -380,53 +380,64 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {stats.recentJobs.map((job) => (
-                  <div
-                    key={job.id}
-                    className="flex items-center justify-between rounded-lg border p-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      {job.status === 'completed' ? (
-                        <CheckCircle className="h-5 w-5 text-serviceable" />
-                      ) : job.status === 'running' ? (
-                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                      ) : job.status === 'pending' ? (
-                        <Clock className="h-5 w-5 text-muted-foreground" />
-                      ) : job.status === 'paused' ? (
-                        <Pause className="h-5 w-5 text-preorder" />
-                      ) : job.status === 'cancelled' ? (
-                        <XCircle className="h-5 w-5 text-muted-foreground" />
-                      ) : (
-                        <AlertCircle className="h-5 w-5 text-not-serviceable" />
-                      )}
-                      <div>
-                        <div className="font-medium">{job.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {job.checkedCount.toLocaleString()} / {job.totalAddresses.toLocaleString()}{' '}
-                          checked • {job.serviceableCount.toLocaleString()} serviceable
+                {stats.recentJobs.map((job) => {
+                  // Extract the timestamp from the original job name
+                  const nameParts = job.name.split(' - ');
+                  const timestamp = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+                  // Find the current selection name
+                  const jobSelection = stats.selections.find((s) => s.id === job.selectionId);
+                  const currentSelectionName = jobSelection?.name || nameParts[0];
+                  // Combine current selection name with original timestamp
+                  const displayName = timestamp ? `${currentSelectionName} - ${timestamp}` : currentSelectionName;
+
+                  return (
+                    <div
+                      key={job.id}
+                      className="flex items-center justify-between rounded-lg border p-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        {job.status === 'completed' ? (
+                          <CheckCircle className="h-5 w-5 text-serviceable" />
+                        ) : job.status === 'running' ? (
+                          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                        ) : job.status === 'pending' ? (
+                          <Clock className="h-5 w-5 text-muted-foreground" />
+                        ) : job.status === 'paused' ? (
+                          <Pause className="h-5 w-5 text-preorder" />
+                        ) : job.status === 'cancelled' ? (
+                          <XCircle className="h-5 w-5 text-muted-foreground" />
+                        ) : (
+                          <AlertCircle className="h-5 w-5 text-not-serviceable" />
+                        )}
+                        <div>
+                          <div className="font-medium">{displayName}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {job.checkedCount.toLocaleString()} / {job.totalAddresses.toLocaleString()}{' '}
+                            checked • {job.serviceableCount.toLocaleString()} serviceable
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <Badge
+                          variant={
+                            job.status === 'completed'
+                              ? 'outline'
+                              : job.status === 'running'
+                              ? 'default'
+                              : job.status === 'pending'
+                              ? 'secondary'
+                              : 'secondary'
+                          }
+                        >
+                          {job.status}
+                        </Badge>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
                         </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <Badge
-                        variant={
-                          job.status === 'completed'
-                            ? 'outline'
-                            : job.status === 'running'
-                            ? 'default'
-                            : job.status === 'pending'
-                            ? 'secondary'
-                            : 'secondary'
-                        }
-                      >
-                        {job.status}
-                      </Badge>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

@@ -203,9 +203,27 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     })
   );
 
+  // Sort selections: active jobs first, then by creation date
+  const sortedSelections = selectionsWithStats.sort((a, b) => {
+    // Check if selection has an active job (running, pending, or paused)
+    const aHasActiveJob = recentJobs.some(
+      job => job.selectionId === a.id && ['running', 'pending', 'paused'].includes(job.status)
+    );
+    const bHasActiveJob = recentJobs.some(
+      job => job.selectionId === b.id && ['running', 'pending', 'paused'].includes(job.status)
+    );
+    
+    // If one has active job and the other doesn't, prioritize the one with active job
+    if (aHasActiveJob && !bHasActiveJob) return -1;
+    if (!aHasActiveJob && bHasActiveJob) return 1;
+    
+    // Otherwise, maintain creation date order (already sorted from query)
+    return 0;
+  });
+
     return {
       sources,
-      selections: selectionsWithStats,
+      selections: sortedSelections,
       totalAddresses,
       totalChecks,
       totalCheckedAddresses,
