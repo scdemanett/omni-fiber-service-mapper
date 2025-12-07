@@ -76,9 +76,9 @@ export default function Dashboard() {
 
   if (isLoading || !stats) {
     return (
-      <div className="bg-grid-pattern" style={{ minHeight: 'calc(100vh - 65px)' }}>
+      <div className="bg-grid-pattern min-h-page-content">
         <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 12rem)' }}>
+          <div className="flex items-center justify-center h-[calc(100vh-12rem)]">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         </div>
@@ -92,7 +92,7 @@ export default function Dashboard() {
       : '0';
 
   return (
-    <div className="bg-grid-pattern" style={{ minHeight: 'calc(100vh - 65px)' }}>
+    <div className="bg-grid-pattern min-h-page-content">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">

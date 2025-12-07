@@ -172,6 +172,15 @@
     background-color: var(--muted);
     border-radius: 3px;
   }
+  
+  /* Page content height - accounts for navigation (4rem) and border (2px) */
+  .h-page-content {
+    height: calc(100vh - 4rem - 2px);
+  }
+  
+  .min-h-page-content {
+    min-height: calc(100vh - 4rem - 2px);
+  }
 }
 
 /* Map marker styles */

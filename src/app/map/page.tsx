@@ -432,7 +432,7 @@ function MapContent() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-4rem-2px)] flex-col overflow-hidden">
+    <div className="flex h-page-content flex-col overflow-hidden">
       {/* Controls Bar */}
       <div className="border-b border-border/50 bg-card/80 backdrop-blur-lg">
         <div className="container mx-auto">
@@ -675,7 +675,7 @@ function MapContent() {
 export default function MapPage() {
   return (
     <Suspense fallback={
-      <div className="flex h-[calc(100vh-4rem-2px)] items-center justify-center">
+      <div className="flex h-page-content items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     }>
