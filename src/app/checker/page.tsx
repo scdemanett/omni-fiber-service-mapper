@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   Play,
@@ -73,6 +73,7 @@ interface LogEntry {
 
 function CheckerContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const preselectedId = searchParams.get('selection');
   const { pollingEnabled } = usePolling();
   const { selectedCampaignId, setSelectedCampaignId } = useSelection();
@@ -135,6 +136,16 @@ function CheckerContent() {
       setSelectedSelectionId(selectedCampaignId);
     }
   }, [preselectedId, selectedCampaignId, setSelectedCampaignId, selectedSelectionId]);
+
+  // Update currentJob when selectedSelectionId or allJobs changes
+  useEffect(() => {
+    if (selectedSelectionId && allJobs.length > 0) {
+      const activeJob = allJobs.find(
+        (j) => (j.status === 'running' || j.status === 'pending' || j.status === 'paused') && j.selectionId === selectedSelectionId
+      );
+      setCurrentJob(activeJob || null);
+    }
+  }, [selectedSelectionId, allJobs]);
 
   // Poll for job status when running or pending and polling is enabled
   useEffect(() => {
@@ -319,6 +330,14 @@ function CheckerContent() {
   );
   const isJobActive = currentJob && (currentJob.status === 'running' || currentJob.status === 'paused' || currentJob.status === 'pending');
   const canStartNew = !isJobActive && !activeJobForSelection;
+  
+  // Check if there's ANY active job running (for any campaign)
+  const anyActiveJob = allJobs.find(
+    (j) => (j.status === 'running' || j.status === 'pending' || j.status === 'paused')
+  );
+  // Check if we arrived via deep link and another campaign is running
+  const isDeepLinked = !!preselectedId;
+  const isDifferentCampaignRunning = anyActiveJob && anyActiveJob.selectionId !== selectedSelectionId;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -358,7 +377,7 @@ function CheckerContent() {
                       setCurrentJob(null);
                     }
                   }}
-                  disabled={currentJob?.status === 'running'}
+                  disabled={!!anyActiveJob}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a campaign" />
@@ -458,28 +477,71 @@ function CheckerContent() {
 
               <div className="flex flex-col gap-2">
                 {canStartNew ? (
-                  <Button
-                    onClick={handleStart}
-                    disabled={!selectedSelectionId || isStarting || isLoading || 
-                      (recheckType === 'unchecked' && selectedSelection?.uncheckedCount === 0) ||
-                      (recheckType === 'preorder' && selectedSelection?.preorderCount === 0) ||
-                      (recheckType === 'noservice' && selectedSelection?.noServiceCount === 0) ||
-                      (recheckType === 'errors' && selectedSelection?.errorCount === 0) ||
-                      (recheckType === 'all' && selectedSelection?._count.addresses === 0)}
-                    className="w-full"
-                  >
-                    {isStarting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Starting...
-                      </>
-                    ) : (
-                      <>
-                        <Play className="mr-2 h-4 w-4" />
-                        Start Checking
-                      </>
-                    )}
-                  </Button>
+                  // Show message if deep-linked to a campaign while another is running
+                  isDeepLinked && isDifferentCampaignRunning ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 p-4">
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" />
+                        <div className="flex-1 space-y-3">
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                              Another campaign is currently running
+                            </p>
+                            <p className="text-xs text-amber-700 dark:text-amber-400">
+                              {anyActiveJob && (() => {
+                                const runningSelection = selections.find((s) => s.id === anyActiveJob.selectionId);
+                                return runningSelection 
+                                  ? `"${runningSelection.name}" is being checked. Click below to switch to that campaign to pause or cancel it.`
+                                  : 'Please wait for the current job to complete before starting a new one.';
+                              })()}
+                            </p>
+                          </div>
+                          {anyActiveJob && (() => {
+                            const runningSelection = selections.find((s) => s.id === anyActiveJob.selectionId);
+                            return runningSelection ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const newSelectionId = anyActiveJob.selectionId!;
+                                  setSelectedSelectionId(newSelectionId);
+                                  setSelectedCampaignId(newSelectionId);
+                                  setCurrentJob(anyActiveJob);
+                                  router.push(`/checker?selection=${newSelectionId}`);
+                                }}
+                                className="w-full bg-white dark:bg-gray-950 hover:bg-amber-100 dark:hover:bg-amber-950 border-amber-300 dark:border-amber-800"
+                              >
+                                Switch to "{runningSelection.name}"
+                              </Button>
+                            ) : null;
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      onClick={handleStart}
+                      disabled={!selectedSelectionId || isStarting || isLoading || 
+                        (recheckType === 'unchecked' && selectedSelection?.uncheckedCount === 0) ||
+                        (recheckType === 'preorder' && selectedSelection?.preorderCount === 0) ||
+                        (recheckType === 'noservice' && selectedSelection?.noServiceCount === 0) ||
+                        (recheckType === 'errors' && selectedSelection?.errorCount === 0) ||
+                        (recheckType === 'all' && selectedSelection?._count.addresses === 0)}
+                      className="w-full"
+                    >
+                      {isStarting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Starting...
+                        </>
+                      ) : (
+                        <>
+                          <Play className="mr-2 h-4 w-4" />
+                          Start Checking
+                        </>
+                      )}
+                    </Button>
+                  )
                 ) : currentJob?.status === 'running' || currentJob?.status === 'pending' ? (
                   <div className="flex gap-2">
                     <Button onClick={handlePause} variant="outline" className="flex-1">
