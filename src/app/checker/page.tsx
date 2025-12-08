@@ -86,6 +86,7 @@ function CheckerContent() {
   const [currentJob, setCurrentJob] = useState<BatchJob | null>(null);
   const [allJobs, setAllJobs] = useState<BatchJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSwitching, setIsSwitching] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [recheckType, setRecheckType] = useState<'unchecked' | 'preorder' | 'noservice' | 'errors' | 'all'>('unchecked');
@@ -109,18 +110,12 @@ function CheckerContent() {
       const data = await response.json();
       if (data.jobs) {
         setAllJobs(data.jobs);
-        // Find any active job for the selected selection
-        const activeJob = data.jobs.find(
-          (j: BatchJob) => (j.status === 'running' || j.status === 'pending' || j.status === 'paused') && j.selectionId === selectedSelectionId
-        );
-        if (activeJob) {
-          setCurrentJob(activeJob);
-        }
+        // currentJob will be set by the useEffect that watches selectedSelectionId and allJobs
       }
     } catch (error) {
       console.error('Error loading jobs:', error);
     }
-  }, [selectedSelectionId]);
+  }, []); // No dependencies - only load jobs on mount and when explicitly called
 
   useEffect(() => {
     loadSelections();
@@ -144,8 +139,13 @@ function CheckerContent() {
         (j) => (j.status === 'running' || j.status === 'pending' || j.status === 'paused') && j.selectionId === selectedSelectionId
       );
       setCurrentJob(activeJob || null);
+      // Clear switching state if URL matches and selections are loaded
+      // When switching campaigns, we don't need to wait for API since data is already in allJobs
+      if ((preselectedId === selectedSelectionId || !preselectedId) && !isLoading && selections.length > 0) {
+        setTimeout(() => setIsSwitching(false), 100);
+      }
     }
-  }, [selectedSelectionId, allJobs]);
+  }, [selectedSelectionId, allJobs, preselectedId, isLoading, selections.length]);
 
   // Poll for job status when running or pending and polling is enabled
   useEffect(() => {
@@ -360,37 +360,46 @@ function CheckerContent() {
               <CardDescription>Select a campaign and start checking</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Selection</label>
-                <Select
-                  value={selectedSelectionId}
-                  onValueChange={(value) => {
-                    setSelectedSelectionId(value);
-                    setSelectedCampaignId(value); // Save to context
-                    // Check if there's an active job for this selection
-                    const activeJob = allJobs.find(
-                      (j) => (j.status === 'running' || j.status === 'paused' || j.status === 'pending') && j.selectionId === value
-                    );
-                    if (activeJob) {
-                      setCurrentJob(activeJob);
-                    } else {
-                      setCurrentJob(null);
-                    }
-                  }}
-                  disabled={!!anyActiveJob}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a campaign" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {selections.map((selection) => (
-                      <SelectItem key={selection.id} value={selection.id}>
-                        {selection.name} ({selection.uncheckedCount.toLocaleString()} pending)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {isLoading || isSwitching ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    {isSwitching ? 'Switching campaigns...' : 'Loading campaigns...'}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Selection</label>
+                    <Select
+                      value={selectedSelectionId}
+                      onValueChange={(value) => {
+                        setSelectedSelectionId(value);
+                        setSelectedCampaignId(value); // Save to context
+                        // Check if there's an active job for this selection
+                        const activeJob = allJobs.find(
+                          (j) => (j.status === 'running' || j.status === 'paused' || j.status === 'pending') && j.selectionId === value
+                        );
+                        if (activeJob) {
+                          setCurrentJob(activeJob);
+                        } else {
+                          setCurrentJob(null);
+                        }
+                      }}
+                      disabled={!!anyActiveJob}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a campaign" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {selections.map((selection) => (
+                          <SelectItem key={selection.id} value={selection.id}>
+                            {selection.name} ({selection.uncheckedCount.toLocaleString()} pending)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
               {selectedSelection && (
                 <div className="space-y-4">
@@ -503,11 +512,15 @@ function CheckerContent() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => {
+                                  setIsSwitching(true);
                                   const newSelectionId = anyActiveJob.selectionId!;
-                                  setSelectedSelectionId(newSelectionId);
-                                  setSelectedCampaignId(newSelectionId);
-                                  setCurrentJob(anyActiveJob);
-                                  router.push(`/checker?selection=${newSelectionId}`);
+                                  // Defer navigation to allow React to render loading state first
+                                  setTimeout(() => {
+                                    setSelectedSelectionId(newSelectionId);
+                                    setSelectedCampaignId(newSelectionId);
+                                    setCurrentJob(anyActiveJob);
+                                    router.push(`/checker?selection=${newSelectionId}`);
+                                  }, 0);
                                 }}
                                 className="w-full bg-white dark:bg-gray-950 hover:bg-amber-100 dark:hover:bg-amber-950 border-amber-300 dark:border-amber-800"
                               >
@@ -566,6 +579,8 @@ function CheckerContent() {
                   </div>
                 ) : null}
               </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
