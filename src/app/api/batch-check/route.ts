@@ -286,6 +286,10 @@ async function processBatch(jobId: string, selectionId: string) {
     return;
   }
 
+  // Update status to 'running' now that processing has started
+  await updateBatchJobStatus(jobId, 'running');
+  console.log(`Job ${jobId} status updated to 'running'`);
+
   // Get addresses based on the job's recheck type
   let addresses;
   const recheckType = job.recheckType || 'unchecked';

@@ -168,6 +168,9 @@ function CheckerContent() {
                 time: new Date(log.time),
               })));
             }
+            // Refresh selections during polling to update overall stats
+            await loadSelections();
+            
             // Stop polling when job is completed, cancelled, or failed
             if (data.job.status !== 'running' && data.job.status !== 'pending') {
               if (pollingRef.current) {
