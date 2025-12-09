@@ -68,6 +68,9 @@ function SelectionsContent() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingSelection, setEditingSelection] = useState<Selection | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingSelection, setDeletingSelection] = useState<{ id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Create selection form state
   const [selectedSourceId, setSelectedSourceId] = useState<string>('');
@@ -89,6 +92,7 @@ function SelectionsContent() {
   const [isUpdating, setIsUpdating] = useState(false);
 
   const loadData = useCallback(async () => {
+    setIsLoading(true);
     try {
       const [sourcesData, selectionsData] = await Promise.all([
         getGeoJSONSources(),
@@ -246,13 +250,21 @@ function SelectionsContent() {
     }
   };
 
-  const handleDeleteSelection = async (selectionId: string, name: string) => {
-    if (!confirm(`Delete selection "${name}"?`)) return;
+  const handleDeleteSelection = (selectionId: string, name: string) => {
+    setDeletingSelection({ id: selectionId, name });
+    setDeleteDialogOpen(true);
+  };
 
+  const confirmDelete = async () => {
+    if (!deletingSelection) return;
+
+    setIsDeleting(true);
     try {
-      const result = await deleteSelection(selectionId);
+      const result = await deleteSelection(deletingSelection.id);
       if (result.success) {
         toast.success('Selection deleted');
+        setDeleteDialogOpen(false);
+        setDeletingSelection(null);
         loadData();
       } else {
         toast.error(result.error || 'Delete failed');
@@ -260,6 +272,8 @@ function SelectionsContent() {
     } catch (error) {
       console.error('Delete error:', error);
       toast.error('Delete failed');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -368,7 +382,7 @@ function SelectionsContent() {
           </p>
         </div>
 
-        <Button onClick={() => setDialogOpen(true)}>
+        <Button onClick={() => setDialogOpen(true)} disabled={isLoading}>
           <Plus className="mr-2 h-4 w-4" />
           New Selection
         </Button>
@@ -607,6 +621,32 @@ function SelectionsContent() {
                   </>
                 ) : (
                   'Update Selection'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Selection</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete "{deletingSelection?.name}"? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={isDeleting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={confirmDelete} disabled={isDeleting}>
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete'
                 )}
               </Button>
             </DialogFooter>

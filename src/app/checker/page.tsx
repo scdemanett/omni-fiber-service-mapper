@@ -88,6 +88,7 @@ function CheckerContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSwitching, setIsSwitching] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [recheckType, setRecheckType] = useState<'unchecked' | 'preorder' | 'noservice' | 'errors' | 'all'>('unchecked');
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
@@ -172,8 +173,11 @@ function CheckerContent() {
               if (pollingRef.current) {
                 clearInterval(pollingRef.current);
               }
-              loadSelections(); // Refresh selection stats
-              loadJobs(); // Refresh job list
+              // Show refreshing state while updating data
+              setIsRefreshing(true);
+              // Refresh both in parallel and wait for both to complete
+              await Promise.all([loadSelections(), loadJobs()]);
+              setIsRefreshing(false);
             }
           }
         } catch (error) {
@@ -335,6 +339,8 @@ function CheckerContent() {
   const anyActiveJob = allJobs.find(
     (j) => (j.status === 'running' || j.status === 'pending' || j.status === 'paused')
   );
+  // Also check currentJob in case it was just started and not yet in allJobs
+  const hasActiveJob = !!anyActiveJob || !!(currentJob && (currentJob.status === 'running' || currentJob.status === 'pending' || currentJob.status === 'paused'));
   // Check if we arrived via deep link and another campaign is running
   const isDeepLinked = !!preselectedId;
   const isDifferentCampaignRunning = anyActiveJob && anyActiveJob.selectionId !== selectedSelectionId;
@@ -360,11 +366,11 @@ function CheckerContent() {
               <CardDescription>Select a campaign and start checking</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {isLoading || isSwitching ? (
+              {isLoading || isSwitching || isRefreshing ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   <p className="mt-3 text-sm text-muted-foreground">
-                    {isSwitching ? 'Switching campaigns...' : 'Loading campaigns...'}
+                    {isRefreshing ? 'Updating campaign stats...' : isSwitching ? 'Switching campaigns...' : 'Loading campaigns...'}
                   </p>
                 </div>
               ) : (
@@ -376,6 +382,8 @@ function CheckerContent() {
                       onValueChange={(value) => {
                         setSelectedSelectionId(value);
                         setSelectedCampaignId(value); // Save to context
+                        // Update URL to keep it in sync with selection
+                        router.push(`/checker?selection=${value}`);
                         // Check if there's an active job for this selection
                         const activeJob = allJobs.find(
                           (j) => (j.status === 'running' || j.status === 'paused' || j.status === 'pending') && j.selectionId === value
@@ -386,7 +394,7 @@ function CheckerContent() {
                           setCurrentJob(null);
                         }
                       }}
-                      disabled={!!anyActiveJob}
+                      disabled={hasActiveJob}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select a campaign" />
