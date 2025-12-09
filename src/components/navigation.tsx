@@ -48,20 +48,29 @@ export function Navigation() {
   }, []);
 
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout | null = null;
+
     const loadStats = async () => {
       try {
         const data = await getNavStats();
         setStats(data);
       } catch (error) {
         console.error('Failed to load nav stats:', error);
+      } finally {
+        // Schedule next poll after this one completes
+        timeoutId = setTimeout(loadStats, 5000);
       }
     };
 
+    // Start polling
     loadStats();
 
-    // Refresh stats when navigating
-    const interval = setInterval(loadStats, 5000);
-    return () => clearInterval(interval);
+    // Cleanup on unmount or pathname change
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
   }, [pathname]);
 
   const navItems = [

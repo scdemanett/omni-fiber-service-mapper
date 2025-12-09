@@ -151,7 +151,7 @@ function CheckerContent() {
   // Poll for job status when running or pending and polling is enabled
   useEffect(() => {
     if ((currentJob?.status === 'running' || currentJob?.status === 'pending') && pollingEnabled) {
-      pollingRef.current = setInterval(async () => {
+      const poll = async () => {
         try {
           const response = await fetch('/api/batch-check', {
             method: 'POST',
@@ -171,28 +171,38 @@ function CheckerContent() {
             // Stop polling when job is completed, cancelled, or failed
             if (data.job.status !== 'running' && data.job.status !== 'pending') {
               if (pollingRef.current) {
-                clearInterval(pollingRef.current);
+                clearTimeout(pollingRef.current);
+                pollingRef.current = null;
               }
               // Show refreshing state while updating data
               setIsRefreshing(true);
               // Refresh both in parallel and wait for both to complete
               await Promise.all([loadSelections(), loadJobs()]);
               setIsRefreshing(false);
+            } else {
+              // Schedule next poll only if job is still running/pending
+              pollingRef.current = setTimeout(poll, 2000);
             }
           }
         } catch (error) {
           console.error('Error polling job status:', error);
+          // Continue polling even on error
+          pollingRef.current = setTimeout(poll, 2000);
         }
-      }, 2000);
+      };
+
+      // Start polling
+      poll();
 
       return () => {
         if (pollingRef.current) {
-          clearInterval(pollingRef.current);
+          clearTimeout(pollingRef.current);
+          pollingRef.current = null;
         }
       };
     } else if (pollingRef.current) {
       // Clear polling if it's disabled
-      clearInterval(pollingRef.current);
+      clearTimeout(pollingRef.current);
       pollingRef.current = null;
     }
   }, [currentJob?.id, currentJob?.status, pollingEnabled, loadSelections, loadJobs]);

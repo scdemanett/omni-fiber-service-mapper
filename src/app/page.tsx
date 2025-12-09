@@ -53,23 +53,34 @@ export default function Dashboard() {
   // Poll when there are active jobs and polling is enabled
   useEffect(() => {
     if (stats?.hasActiveJobs && pollingEnabled) {
-      pollingRef.current = setInterval(async () => {
-        const stillActive = await loadStats();
-        if (!stillActive && pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
+      const poll = async () => {
+        try {
+          const stillActive = await loadStats();
+          if (stillActive) {
+            // Schedule next poll only if job is still active
+            pollingRef.current = setTimeout(poll, 3000);
+          } else {
+            pollingRef.current = null;
+          }
+        } catch (error) {
+          console.error('Error polling dashboard stats:', error);
+          // Continue polling even on error
+          pollingRef.current = setTimeout(poll, 3000);
         }
-      }, 3000);
+      };
+
+      // Start polling
+      poll();
 
       return () => {
         if (pollingRef.current) {
-          clearInterval(pollingRef.current);
+          clearTimeout(pollingRef.current);
           pollingRef.current = null;
         }
       };
     } else if (pollingRef.current) {
       // Clear polling if it's disabled
-      clearInterval(pollingRef.current);
+      clearTimeout(pollingRef.current);
       pollingRef.current = null;
     }
   }, [stats?.hasActiveJobs, pollingEnabled, loadStats]);

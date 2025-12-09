@@ -327,31 +327,43 @@ function MapContent() {
   // Poll for updates when there's an active job and polling is enabled
   useEffect(() => {
     if (activeJob && selectedSelectionId && pollingEnabled && !timelineEnabled) {
-      pollingRef.current = setInterval(async () => {
-        // Refresh addresses (only when NOT in timeline mode)
-        await loadAddresses(selectedSelectionId);
-        // Check if job is still active
-        const job = await checkForActiveJob(selectedSelectionId);
-        if (!job) {
-          // Job finished, stop polling
-          if (pollingRef.current) {
-            clearInterval(pollingRef.current);
-            pollingRef.current = null;
+      const poll = async () => {
+        try {
+          // Refresh addresses (only when NOT in timeline mode)
+          await loadAddresses(selectedSelectionId);
+          // Check if job is still active
+          const job = await checkForActiveJob(selectedSelectionId);
+          if (!job) {
+            // Job finished, stop polling
+            if (pollingRef.current) {
+              clearTimeout(pollingRef.current);
+              pollingRef.current = null;
+            }
+            loadSelections(); // Refresh selection stats
+            loadTimeline(selectedSelectionId); // Refresh timeline data
+          } else {
+            // Schedule next poll only if job is still active
+            pollingRef.current = setTimeout(poll, 3000);
           }
-          loadSelections(); // Refresh selection stats
-          loadTimeline(selectedSelectionId); // Refresh timeline data
+        } catch (error) {
+          console.error('Error polling map updates:', error);
+          // Continue polling even on error
+          pollingRef.current = setTimeout(poll, 3000);
         }
-      }, 3000); // Poll every 3 seconds for map (less frequent than checker)
+      };
+
+      // Start polling
+      poll();
 
       return () => {
         if (pollingRef.current) {
-          clearInterval(pollingRef.current);
+          clearTimeout(pollingRef.current);
           pollingRef.current = null;
         }
       };
     } else if (pollingRef.current) {
       // Clear polling if it's disabled or timeline is enabled
-      clearInterval(pollingRef.current);
+      clearTimeout(pollingRef.current);
       pollingRef.current = null;
     }
   }, [activeJob, selectedSelectionId, pollingEnabled, timelineEnabled, loadAddresses, checkForActiveJob, loadSelections, loadTimeline]);
