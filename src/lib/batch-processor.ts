@@ -122,12 +122,20 @@ export async function recordServiceabilityCheck(
   addressId: string,
   jobId: string,
   selectionId: string | null,
-  result: ServiceabilityResult,
+  result: ServiceabilityResult | null,
   error?: string
 ): Promise<void> {
-  const incrementServiceable = result.serviceabilityType === 'serviceable' ? 1 : 0;
-  const incrementPreorder = result.serviceabilityType === 'preorder' ? 1 : 0;
-  const incrementNoService = result.serviceabilityType === 'none' ? 1 : 0;
+  const hasError = (error ?? '').trim().length > 0;
+  const safeResult: ServiceabilityResult = result ?? {
+    serviceable: false,
+    serviceabilityType: 'none',
+  };
+
+  // Only increment the serviceability buckets for successful (non-error) attempts.
+  // Errors are tracked in ServiceabilityCheck.error and can be rechecked via recheckType='errors'.
+  const incrementServiceable = !hasError && safeResult.serviceabilityType === 'serviceable' ? 1 : 0;
+  const incrementPreorder = !hasError && safeResult.serviceabilityType === 'preorder' ? 1 : 0;
+  const incrementNoService = !hasError && safeResult.serviceabilityType === 'none' ? 1 : 0;
 
   // One transaction: write the check + atomically increment batch counters.
   await prisma.$transaction([
@@ -135,22 +143,23 @@ export async function recordServiceabilityCheck(
       data: {
         addressId,
         selectionId: selectionId ?? undefined,
-        serviceable: result.serviceable,
-        serviceabilityType: result.serviceabilityType,
-        salesType: result.salesType,
-        status: result.status,
-        cstatus: result.cstatus,
-        isPreSale: result.isPreSale,
-        salesStatus: result.salesStatus,
-        matchType: result.matchType,
-        apiCreateDate: result.apiCreateDate ? new Date(result.apiCreateDate) : null,
-        apiUpdateDate: result.apiUpdateDate ? new Date(result.apiUpdateDate) : null,
-        error: error?.substring(0, 1000), // Limit error message length
+        serviceable: safeResult.serviceable,
+        serviceabilityType: safeResult.serviceabilityType,
+        salesType: safeResult.salesType,
+        status: safeResult.status,
+        cstatus: safeResult.cstatus,
+        isPreSale: safeResult.isPreSale,
+        salesStatus: safeResult.salesStatus,
+        matchType: safeResult.matchType,
+        apiCreateDate: safeResult.apiCreateDate ? new Date(safeResult.apiCreateDate) : null,
+        apiUpdateDate: safeResult.apiUpdateDate ? new Date(safeResult.apiUpdateDate) : null,
+        error: hasError ? error!.substring(0, 1000) : null, // Limit error message length
       },
     }),
     prisma.batchJob.update({
       where: { id: jobId },
       data: {
+        // checkedCount/currentIndex represent attempted addresses (success OR failure)
         checkedCount: { increment: 1 },
         serviceableCount: { increment: incrementServiceable },
         preorderCount: { increment: incrementPreorder },

@@ -168,10 +168,23 @@ function CheckerContent() {
             setCurrentJob(data.job);
             // Update activity logs
             if (data.logs) {
-              setLogs(data.logs.map((log: { id: string; address: string; serviceable: boolean; status?: string; time: string }) => ({
-                ...log,
-                time: new Date(log.time),
-              })));
+              setLogs(
+                data.logs.map(
+                  (log: {
+                    id: string;
+                    address: string;
+                    serviceable: boolean;
+                    serviceabilityType?: string;
+                    status?: string;
+                    error?: string | null;
+                    time: string;
+                  }) => ({
+                    ...log,
+                    error: log.error ?? undefined,
+                    time: new Date(log.time),
+                  })
+                )
+              );
             }
             // Refresh selections during polling to update overall stats
             await loadSelections();
@@ -802,7 +815,9 @@ function CheckerContent() {
                         key={log.id}
                         className="flex items-center gap-3 rounded-lg border p-3 text-sm"
                       >
-                        {log.serviceabilityType === 'serviceable' ? (
+                        {log.error ? (
+                          <AlertCircle className="h-4 w-4 text-destructive" />
+                        ) : log.serviceabilityType === 'serviceable' ? (
                           <CheckCircle className="h-4 w-4 text-serviceable" />
                         ) : log.serviceabilityType === 'preorder' ? (
                           <Clock className="h-4 w-4 text-preorder" />
@@ -811,7 +826,14 @@ function CheckerContent() {
                         ) : (
                           <AlertCircle className="h-4 w-4 text-muted-foreground" />
                         )}
-                        <div className="flex-1 truncate font-mono text-xs">{log.address}</div>
+                        <div className="flex-1 truncate font-mono text-xs">
+                          {log.address}
+                          {log.error ? (
+                            <span className="ml-2 text-destructive">
+                              {`— ${log.error}`}
+                            </span>
+                          ) : null}
+                        </div>
                         <div className="text-xs text-muted-foreground">
                           {log.time.toLocaleTimeString()}
                         </div>

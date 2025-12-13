@@ -260,6 +260,7 @@ async function handleStatus(jobId: string) {
     serviceable: check.serviceable,
     serviceabilityType: check.serviceabilityType,
     status: check.status,
+    error: check.error,
     time: check.checkedAt,
   }));
 
@@ -395,7 +396,13 @@ async function processBatch(jobId: string, selectionId: string) {
 
       const shopperData = await fetchShopperData(address.addressString);
       if (!shopperData) {
-        console.log(`  -> API ERROR: Failed to fetch data from API (not recording, address remains unchecked)`);
+        const msg = 'Failed to fetch data from API';
+        console.log(`  -> API ERROR: ${msg} (recording error + advancing progress)`);
+        try {
+          await recordServiceabilityCheck(address.id, jobId, selectionId, null, msg);
+        } catch (dbErr) {
+          console.error(`Failed to record API error for ${address.addressString}:`, dbErr);
+        }
         return;
       }
 
@@ -414,7 +421,13 @@ async function processBatch(jobId: string, selectionId: string) {
       );
     } catch (error) {
       console.error(`Error checking address ${address.addressString}:`, error);
-      console.log(`  -> ERROR: ${error instanceof Error ? error.message : 'Unknown error'} (not recording, address remains unchecked)`);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      console.log(`  -> ERROR: ${msg} (recording error + advancing progress)`);
+      try {
+        await recordServiceabilityCheck(address.id, jobId, selectionId, null, msg);
+      } catch (dbErr) {
+        console.error(`Failed to record error for ${address.addressString}:`, dbErr);
+      }
     }
   };
 
