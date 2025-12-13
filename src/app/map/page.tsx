@@ -327,12 +327,14 @@ function MapContent() {
   // Poll for updates when there's an active job and polling is enabled
   useEffect(() => {
     if (activeJob && selectedSelectionId && pollingEnabled && !timelineEnabled) {
+      let cancelled = false;
       const poll = async () => {
         try {
           // Refresh addresses (only when NOT in timeline mode)
           await loadAddresses(selectedSelectionId);
           // Check if job is still active
           const job = await checkForActiveJob(selectedSelectionId);
+          if (cancelled) return;
           if (!job) {
             // Job finished, stop polling
             if (pollingRef.current) {
@@ -346,6 +348,7 @@ function MapContent() {
             pollingRef.current = setTimeout(poll, 3000);
           }
         } catch (error) {
+          if (cancelled) return;
           console.error('Error polling map updates:', error);
           // Continue polling even on error
           pollingRef.current = setTimeout(poll, 3000);
@@ -356,6 +359,7 @@ function MapContent() {
       poll();
 
       return () => {
+        cancelled = true;
         if (pollingRef.current) {
           clearTimeout(pollingRef.current);
           pollingRef.current = null;

@@ -8,8 +8,15 @@ import {
   getAddressesByServiceabilityType,
 } from '@/lib/batch-processor';
 import { isServiceable, type ShopperResponse } from '@/lib/omni-decoder';
+import { fetchShopperData } from '@/lib/omni-shopper-api';
 
-const DELAY_MS = 500; // 0.5 seconds between requests
+const DELAY_MS = Number(process.env.BATCH_DELAY_MS ?? 250); // minimum spacing between request STARTs
+const MAX_IN_FLIGHT = Number(process.env.BATCH_MAX_IN_FLIGHT ?? 10); // cap concurrent Omni requests
+const STATUS_POLL_MS = Number(process.env.BATCH_STATUS_POLL_MS ?? 1000);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Route segment config
 export const maxDuration = 300; // 5 minutes max for long-running batch jobs
@@ -352,76 +359,92 @@ async function processBatch(jobId: string, selectionId: string) {
 
   console.log(`Found ${addresses.length} addresses to check (mode: ${recheckType})`);
 
-  for (let i = 0; i < addresses.length; i++) {
-    const address = addresses[i];
-    
-    // Check job status before each address - allows pause/cancel to take effect
-    const currentJob = await prisma.batchJob.findUnique({ 
+  // Rate-limited scheduler: start a new Omni request every DELAY_MS (start-to-start),
+  // while allowing a small amount of concurrency so long requests don't stall throughput.
+  const inFlight = new Set<Promise<void>>();
+  let lastStartAt = 0;
+  let lastStatusCheckAt = 0;
+
+  const awaitAny = async () => {
+    if (inFlight.size === 0) return;
+    await Promise.race(inFlight);
+  };
+
+  const checkJobStillRunnable = async () => {
+    const now = Date.now();
+    if (now - lastStatusCheckAt < STATUS_POLL_MS) return true;
+    lastStatusCheckAt = now;
+
+    const currentJob = await prisma.batchJob.findUnique({
       where: { id: jobId },
       select: { status: true },
     });
 
     if (!currentJob || currentJob.status === 'paused' || currentJob.status === 'cancelled') {
       console.log(`Job ${jobId} was ${currentJob?.status || 'deleted'}, stopping processing`);
-      return;
+      return false;
     }
 
+    return true;
+  };
+
+  const runOne = async (address: { id: string; addressString: string }, i: number) => {
+    const started = Date.now();
     try {
       console.log(`[${i + 1}/${addresses.length}] Checking: ${address.addressString}`);
-      
-      // Call the check-serviceability API
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/check-serviceability`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address: address.addressString }),
-        }
-      );
 
-      if (!response.ok) {
-        throw new Error(`API returned status ${response.status}`);
+      const shopperData = await fetchShopperData(address.addressString);
+      if (!shopperData) {
+        console.log(`  -> API ERROR: Failed to fetch data from API (not recording, address remains unchecked)`);
+        return;
       }
 
-      const result = await response.json();
-      
-      // Check if the API returned an error (network/API failure, not a valid response)
-      if (result.error && !result.fullResponse) {
-        // This is an API/network error, not a valid check - don't record it
-        console.log(`  -> API ERROR: ${result.error} (not recording, address remains unchecked)`);
-        // Continue to next address without recording
-        continue;
-      }
-      
-      // Validate result structure
-      if (!result || typeof result !== 'object') {
-        throw new Error('Invalid API response structure');
-      }
+      const serviceabilityResult = isServiceable(shopperData as ShopperResponse);
 
-      const serviceabilityResult = isServiceable(result.fullResponse as ShopperResponse);
-
-      // Record the result only if we have a valid response
       await recordServiceabilityCheck(
         address.id,
         jobId,
-        serviceabilityResult,
-        result.error
+        selectionId,
+        serviceabilityResult
       );
 
-      console.log(`  -> ${serviceabilityResult.serviceabilityType}: ${serviceabilityResult.serviceable ? 'SERVICEABLE' : 'Not serviceable'}`);
-
-      // Wait between requests (respecting rate limits)
-      if (i < addresses.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
-      }
+      const elapsed = Date.now() - started;
+      console.log(
+        `  -> ${serviceabilityResult.serviceabilityType}: ${serviceabilityResult.serviceable ? 'SERVICEABLE' : 'Not serviceable'} (${elapsed}ms)`
+      );
     } catch (error) {
       console.error(`Error checking address ${address.addressString}:`, error);
-      // DON'T record the check - let the address remain unchecked so it can be retried
-      // This prevents false "no service" entries from API/network errors
       console.log(`  -> ERROR: ${error instanceof Error ? error.message : 'Unknown error'} (not recording, address remains unchecked)`);
-      // Continue to next address without recording
     }
+  };
+
+  for (let i = 0; i < addresses.length; ) {
+    const runnable = await checkJobStillRunnable();
+    if (!runnable) return;
+
+    if (inFlight.size >= Math.max(1, MAX_IN_FLIGHT)) {
+      await awaitAny();
+      continue;
+    }
+
+    const now = Date.now();
+    const nextStartAt = lastStartAt ? lastStartAt + Math.max(0, DELAY_MS) : now;
+    const waitMs = Math.max(0, nextStartAt - now);
+    if (waitMs > 0) {
+      await sleep(waitMs);
+    }
+
+    const address = addresses[i];
+    const p = runOne(address, i).finally(() => {
+      inFlight.delete(p);
+    });
+    inFlight.add(p);
+    lastStartAt = Date.now();
+    i++;
   }
+
+  // Wait for any remaining in-flight checks to finish.
+  await Promise.allSettled([...inFlight]);
 
   // Mark as completed
   console.log(`Job ${jobId} completed`);

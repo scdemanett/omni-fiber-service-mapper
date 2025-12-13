@@ -53,9 +53,11 @@ export default function Dashboard() {
   // Poll when there are active jobs and polling is enabled
   useEffect(() => {
     if (stats?.hasActiveJobs && pollingEnabled) {
+      let cancelled = false;
       const poll = async () => {
         try {
           const stillActive = await loadStats();
+          if (cancelled) return;
           if (stillActive) {
             // Schedule next poll only if job is still active
             pollingRef.current = setTimeout(poll, 3000);
@@ -63,6 +65,7 @@ export default function Dashboard() {
             pollingRef.current = null;
           }
         } catch (error) {
+          if (cancelled) return;
           console.error('Error polling dashboard stats:', error);
           // Continue polling even on error
           pollingRef.current = setTimeout(poll, 3000);
@@ -73,6 +76,7 @@ export default function Dashboard() {
       poll();
 
       return () => {
+        cancelled = true;
         if (pollingRef.current) {
           clearTimeout(pollingRef.current);
           pollingRef.current = null;

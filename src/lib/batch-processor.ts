@@ -121,47 +121,45 @@ export async function updateBatchJobStatus(
 export async function recordServiceabilityCheck(
   addressId: string,
   jobId: string,
+  selectionId: string | null,
   result: ServiceabilityResult,
   error?: string
 ): Promise<void> {
-  // Create the check record
-  await prisma.serviceabilityCheck.create({
-    data: {
-      addressId,
-      selectionId: (await prisma.batchJob.findUnique({ where: { id: jobId } }))?.selectionId,
-      serviceable: result.serviceable,
-      serviceabilityType: result.serviceabilityType,
-      salesType: result.salesType,
-      status: result.status,
-      cstatus: result.cstatus,
-      isPreSale: result.isPreSale,
-      salesStatus: result.salesStatus,
-      matchType: result.matchType,
-      apiCreateDate: result.apiCreateDate ? new Date(result.apiCreateDate) : null,
-      apiUpdateDate: result.apiUpdateDate ? new Date(result.apiUpdateDate) : null,
-      error: error?.substring(0, 1000), // Limit error message length
-    },
-  });
+  const incrementServiceable = result.serviceabilityType === 'serviceable' ? 1 : 0;
+  const incrementPreorder = result.serviceabilityType === 'preorder' ? 1 : 0;
+  const incrementNoService = result.serviceabilityType === 'none' ? 1 : 0;
 
-  // Update batch job progress with counts for each serviceability type
-  const job = await prisma.batchJob.findUnique({ where: { id: jobId } });
-  if (job) {
-    const incrementServiceable = result.serviceabilityType === 'serviceable' ? 1 : 0;
-    const incrementPreorder = result.serviceabilityType === 'preorder' ? 1 : 0;
-    const incrementNoService = result.serviceabilityType === 'none' ? 1 : 0;
-    
-    await prisma.batchJob.update({
+  // One transaction: write the check + atomically increment batch counters.
+  await prisma.$transaction([
+    prisma.serviceabilityCheck.create({
+      data: {
+        addressId,
+        selectionId: selectionId ?? undefined,
+        serviceable: result.serviceable,
+        serviceabilityType: result.serviceabilityType,
+        salesType: result.salesType,
+        status: result.status,
+        cstatus: result.cstatus,
+        isPreSale: result.isPreSale,
+        salesStatus: result.salesStatus,
+        matchType: result.matchType,
+        apiCreateDate: result.apiCreateDate ? new Date(result.apiCreateDate) : null,
+        apiUpdateDate: result.apiUpdateDate ? new Date(result.apiUpdateDate) : null,
+        error: error?.substring(0, 1000), // Limit error message length
+      },
+    }),
+    prisma.batchJob.update({
       where: { id: jobId },
       data: {
-        checkedCount: job.checkedCount + 1,
-        serviceableCount: job.serviceableCount + incrementServiceable,
-        preorderCount: job.preorderCount + incrementPreorder,
-        noServiceCount: job.noServiceCount + incrementNoService,
-        currentIndex: job.currentIndex + 1,
+        checkedCount: { increment: 1 },
+        serviceableCount: { increment: incrementServiceable },
+        preorderCount: { increment: incrementPreorder },
+        noServiceCount: { increment: incrementNoService },
+        currentIndex: { increment: 1 },
         lastCheckAt: new Date(),
       },
-    });
-  }
+    }),
+  ]);
 }
 
 /**

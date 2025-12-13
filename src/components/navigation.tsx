@@ -49,29 +49,33 @@ export function Navigation() {
 
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;
+    let cancelled = false;
 
     const loadStats = async () => {
       try {
         const data = await getNavStats();
-        setStats(data);
+        if (!cancelled) setStats(data);
       } catch (error) {
         console.error('Failed to load nav stats:', error);
       } finally {
-        // Schedule next poll after this one completes
-        timeoutId = setTimeout(loadStats, 5000);
+        // Schedule next poll after this one completes (only when live updates are enabled)
+        if (!cancelled && pollingEnabled) {
+          timeoutId = setTimeout(loadStats, 5000);
+        }
       }
     };
 
-    // Start polling
+    // Always load once on navigation; only keep polling if live updates are enabled.
     loadStats();
 
     // Cleanup on unmount or pathname change
     return () => {
+      cancelled = true;
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
     };
-  }, [pathname]);
+  }, [pathname, pollingEnabled]);
 
   const navItems = [
     { 

@@ -151,14 +151,19 @@ function CheckerContent() {
   // Poll for job status when running or pending and polling is enabled
   useEffect(() => {
     if ((currentJob?.status === 'running' || currentJob?.status === 'pending') && pollingEnabled) {
+      let cancelled = false;
+      const abortController = new AbortController();
+
       const poll = async () => {
         try {
           const response = await fetch('/api/batch-check', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'status', jobId: currentJob.id }),
+            signal: abortController.signal,
           });
           const data = await response.json();
+          if (cancelled) return;
           if (data.job) {
             setCurrentJob(data.job);
             // Update activity logs
@@ -170,6 +175,7 @@ function CheckerContent() {
             }
             // Refresh selections during polling to update overall stats
             await loadSelections();
+            if (cancelled) return;
             
             // Stop polling when job is completed, cancelled, or failed
             if (data.job.status !== 'running' && data.job.status !== 'pending') {
@@ -184,13 +190,18 @@ function CheckerContent() {
               setIsRefreshing(false);
             } else {
               // Schedule next poll only if job is still running/pending
-              pollingRef.current = setTimeout(poll, 2000);
+              if (!cancelled) {
+                pollingRef.current = setTimeout(poll, 2000);
+              }
             }
           }
         } catch (error) {
+          if (cancelled) return;
           console.error('Error polling job status:', error);
           // Continue polling even on error
-          pollingRef.current = setTimeout(poll, 2000);
+          if (!cancelled) {
+            pollingRef.current = setTimeout(poll, 2000);
+          }
         }
       };
 
@@ -198,6 +209,8 @@ function CheckerContent() {
       poll();
 
       return () => {
+        cancelled = true;
+        abortController.abort();
         if (pollingRef.current) {
           clearTimeout(pollingRef.current);
           pollingRef.current = null;
@@ -748,15 +761,6 @@ function CheckerContent() {
                     <div className="text-xs uppercase text-muted-foreground">Remaining</div>
                   </div>
                 </div>
-
-                {currentJob.status === 'running' && (
-                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>
-                      Checking addresses... (~0.5 seconds per address)
-                    </span>
-                  </div>
-                )}
 
                 {currentJob.status === 'paused' && (
                   <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
