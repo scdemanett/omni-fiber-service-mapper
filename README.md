@@ -116,7 +116,7 @@ cp .env.example .env
 ```
 
 **Environment Variables** (see `.env.example`):
-- `DATABASE_URL` - SQLite database location (default: `file:./dev.db`)
+- `DATABASE_URL` - SQLite database location (default: `file:./prisma/dev.db`)
 - `NEXT_PUBLIC_BASE_URL` - Application URL (default: `http://localhost:3000`)
 - `NODE_ENV` - Environment mode (development/production)
 

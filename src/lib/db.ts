@@ -1,35 +1,23 @@
 import { PrismaClient } from '../generated/prisma';
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-// Configure SQLite for better handling of large datasets and concurrent access
+// Prisma ORM v7 uses driver adapters for direct DB connections.
+// Keep the URL simple (SQLite file URL); tune concurrency via PRAGMAs below.
 const databaseUrl = process.env.DATABASE_URL || 'file:./prisma/dev.db';
-
-// Add critical SQLite parameters for better concurrent performance:
-// - timeout: 60000ms (increased from 30s to handle large uploads)
-// - connection_limit: 1 (SQLite best practice - single writer)
-// - pool_timeout: 60 seconds
-const urlParams = new URLSearchParams();
-urlParams.set('timeout', '60000');
-urlParams.set('connection_limit', '1');
-urlParams.set('pool_timeout', '60');
-
-const urlWithParams = databaseUrl.includes('?') 
-  ? `${databaseUrl}&${urlParams.toString()}` 
-  : `${databaseUrl}?${urlParams.toString()}`;
 
 export const prisma =
   globalForPrisma.prisma ??
-  new PrismaClient({
-    log: ['error', 'warn'],
-    datasources: {
-      db: {
-        url: urlWithParams,
-      },
-    },
-  });
+  (() => {
+    const adapter = new PrismaBetterSqlite3({ url: databaseUrl });
+    return new PrismaClient({
+      log: ['error', 'warn'],
+      adapter,
+    });
+  })();
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
@@ -44,6 +32,15 @@ prisma.$queryRawUnsafe('PRAGMA journal_mode = WAL;')
   })
   .catch(err => {
     console.error('Failed to enable WAL mode:', err);
+  });
+
+// Increase busy timeout to reduce SQLITE_BUSY during large operations.
+prisma.$queryRawUnsafe('PRAGMA busy_timeout = 60000;')
+  .then(() => {
+    console.log('✓ SQLite busy_timeout set to 60000ms');
+  })
+  .catch(err => {
+    console.error('Failed to set SQLite busy_timeout:', err);
   });
 
 export default prisma;
