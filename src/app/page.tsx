@@ -326,6 +326,7 @@ export default function Dashboard() {
                         ? (selection.checkedCount / selection._count.addresses) * 100
                         : 0;
 
+                    const isComplete = selection.uncheckedCount === 0 && selection.errorCount === 0;
                     return (
                       <div
                         key={selection.id}
@@ -335,9 +336,13 @@ export default function Dashboard() {
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{selection.name}</span>
-                              {selection.uncheckedCount === 0 ? (
+                              {isComplete ? (
                                 <Badge variant="outline" className="text-serviceable">
                                   Complete
+                                </Badge>
+                              ) : selection.errorCount > 0 ? (
+                                <Badge variant="outline" className="text-destructive">
+                                  Errors
                                 </Badge>
                               ) : progress > 0 ? (
                                 <Badge variant="secondary">In Progress</Badge>
@@ -359,6 +364,14 @@ export default function Dashboard() {
                               <span className="text-no-service">
                                 {selection.noServiceCount} none
                               </span>
+                              {selection.errorCount > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-destructive">
+                                    {selection.errorCount} errors
+                                  </span>
+                                </>
+                              )}
                             </div>
                           </div>
                           <div className="flex gap-2">

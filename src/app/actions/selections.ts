@@ -107,7 +107,7 @@ export async function getSelections() {
       try {
         const selectionId = selection.id;
         
-        // Count checked addresses (have at least one check)
+        // Count checked addresses (have at least one check, regardless of error)
         // Convert BigInt to number for JavaScript arithmetic
         const checkedCount = await prisma.$queryRaw<[{ count: bigint }]>`
           SELECT COUNT(DISTINCT a.id) as count
@@ -115,7 +115,6 @@ export async function getSelections() {
           INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
           INNER JOIN serviceability_checks sc ON a.id = sc.addressId
           WHERE atas.B = ${selectionId}
-            AND (sc.error IS NULL OR sc.error = '')
             AND sc.checkedAt = (
               SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
             )

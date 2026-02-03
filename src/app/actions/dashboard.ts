@@ -18,6 +18,7 @@ export interface DashboardStats {
     serviceableCount: number;
     preorderCount: number;
     noServiceCount: number;
+    errorCount: number;
     uncheckedCount: number;
   }[];
   totalAddresses: number;
@@ -122,13 +123,14 @@ export async function getDashboardStats(): Promise<DashboardStats> {
         
         // Use raw queries for better performance with large selections
         // Convert BigInt to number for JavaScript arithmetic
+        // "checkedCount" should match the batch-check API's notion of "checked" (has any latest check),
+        // so "uncheckedCount" means addresses with zero checks.
         const checkedCount = await prisma.$queryRaw<[{ count: bigint }]>`
           SELECT COUNT(DISTINCT a.id) as count
           FROM addresses a
           INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
           INNER JOIN serviceability_checks sc ON a.id = sc.addressId
           WHERE atas.B = ${selectionId}
-            AND (sc.error IS NULL OR sc.error = '')
             AND sc.checkedAt = (
               SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
             )
@@ -173,6 +175,19 @@ export async function getDashboardStats(): Promise<DashboardStats> {
             )
         `.then(result => Number(result[0]?.count || 0));
 
+        const errorCount = await prisma.$queryRaw<[{ count: bigint }]>`
+          SELECT COUNT(DISTINCT a.id) as count
+          FROM addresses a
+          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
+          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
+          WHERE atas.B = ${selectionId}
+            AND sc.error IS NOT NULL
+            AND sc.error != ''
+            AND sc.checkedAt = (
+              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
+            )
+        `.then(result => Number(result[0]?.count || 0));
+
         const totalAddresses = selection._count.addresses;
         const uncheckedCount = totalAddresses - checkedCount;
 
@@ -184,6 +199,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
           serviceableCount,
           preorderCount,
           noServiceCount,
+          errorCount,
           uncheckedCount,
         };
       } catch (error) {
@@ -197,6 +213,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
           serviceableCount: 0,
           preorderCount: 0,
           noServiceCount: 0,
+          errorCount: 0,
           uncheckedCount: 0,
         };
       }
