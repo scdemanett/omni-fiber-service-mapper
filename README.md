@@ -19,7 +19,7 @@ cp .env.example .env
 
 # Setup database
 npx prisma generate
-npx prisma migrate dev
+npx prisma db push
 
 # Start development server
 npm run dev
@@ -84,7 +84,7 @@ Visit [http://localhost:3000](http://localhost:3000) to get started!
 ## Tech Stack
 
 - **Framework**: Next.js 16 (App Router)
-- **Database**: SQLite with Prisma ORM
+- **Database**: PostgreSQL (Supabase) with Prisma ORM
 - **UI**: React, Tailwind CSS, shadcn/ui
 - **Maps**: Leaflet.js
 - **API Integration**: Omni Fiber getCatalog API with custom decoder
@@ -116,20 +116,22 @@ cp .env.example .env
 ```
 
 **Environment Variables** (see `.env.example`):
-- `DATABASE_URL` - SQLite database location (default: `file:./prisma/dev.db`)
+- `DATABASE_URL` - PostgreSQL connection string (Supabase pooler or direct)
+- `DIRECT_URL` - Direct PostgreSQL connection for Prisma CLI migrations
 - `NEXT_PUBLIC_BASE_URL` - Application URL (default: `http://localhost:3000`)
 - `NODE_ENV` - Environment mode (development/production)
 
 #### 3️⃣ Setup Database
+
+Set up a PostgreSQL database (e.g. [Supabase](https://supabase.com/)) and add your connection strings to `.env`.
+
 ```bash
 # Generate Prisma client from schema
 npx prisma generate
 
-# Run migrations to create database schema
-npx prisma migrate dev
+# Push schema to the database
+npx prisma db push
 ```
-
-This creates a SQLite database at `prisma/dev.db` with all required tables.
 
 #### 4️⃣ Start Development Server
 ```bash

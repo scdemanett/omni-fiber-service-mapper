@@ -62,181 +62,109 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       }),
     ]);
 
-  // Get serviceability stats by counting unique addresses with their latest check
-  // For large datasets, we need to be more efficient and avoid loading all addresses at once
-  // Use raw queries for better performance with large datasets
-  // Note: SQLite COUNT returns BigInt, so we need to convert to number
-  const serviceableChecks = await prisma.$queryRaw<[{ count: bigint }]>`
-    SELECT COUNT(DISTINCT a.id) as count
-    FROM addresses a
-    INNER JOIN (
-      SELECT addressId, MAX(checkedAt) as maxDate
-      FROM serviceability_checks
-      GROUP BY addressId
-    ) latest ON a.id = latest.addressId
-    INNER JOIN serviceability_checks sc ON sc.addressId = latest.addressId AND sc.checkedAt = latest.maxDate
-    WHERE sc.serviceabilityType = 'serviceable' AND (sc.error IS NULL OR sc.error = '')
-  `.then(result => Number(result[0]?.count || 0));
+    // ── Global serviceability stats ──
+    // Single query using PostgreSQL DISTINCT ON + FILTER to replace 4 separate queries.
+    // DISTINCT ON ("addressId") with ORDER BY "checkedAt" DESC picks the latest check per address.
+    const globalStats = await prisma.$queryRaw<[{
+      serviceableCount: bigint;
+      preorderCount: bigint;
+      noServiceCount: bigint;
+      totalChecked: bigint;
+    }]>`
+      WITH latest_checks AS (
+        SELECT DISTINCT ON ("addressId")
+          "addressId",
+          "serviceabilityType",
+          error
+        FROM serviceability_checks
+        ORDER BY "addressId", "checkedAt" DESC
+      )
+      SELECT
+        COUNT(*) FILTER (WHERE "serviceabilityType" = 'serviceable' AND (error IS NULL OR error = '')) as "serviceableCount",
+        COUNT(*) FILTER (WHERE "serviceabilityType" = 'preorder' AND (error IS NULL OR error = '')) as "preorderCount",
+        COUNT(*) FILTER (WHERE "serviceabilityType" = 'none' AND (error IS NULL OR error = '')) as "noServiceCount",
+        COUNT(*) FILTER (WHERE error IS NULL OR error = '') as "totalChecked"
+      FROM latest_checks
+    `;
 
-  const preorderChecks = await prisma.$queryRaw<[{ count: bigint }]>`
-    SELECT COUNT(DISTINCT a.id) as count
-    FROM addresses a
-    INNER JOIN (
-      SELECT addressId, MAX(checkedAt) as maxDate
-      FROM serviceability_checks
-      GROUP BY addressId
-    ) latest ON a.id = latest.addressId
-    INNER JOIN serviceability_checks sc ON sc.addressId = latest.addressId AND sc.checkedAt = latest.maxDate
-    WHERE sc.serviceabilityType = 'preorder' AND (sc.error IS NULL OR sc.error = '')
-  `.then(result => Number(result[0]?.count || 0));
+    const serviceableChecks = Number(globalStats[0]?.serviceableCount || 0);
+    const preorderChecks = Number(globalStats[0]?.preorderCount || 0);
+    const noServiceChecks = Number(globalStats[0]?.noServiceCount || 0);
+    const totalCheckedAddresses = Number(globalStats[0]?.totalChecked || 0);
 
-  const noServiceChecks = await prisma.$queryRaw<[{ count: bigint }]>`
-    SELECT COUNT(DISTINCT a.id) as count
-    FROM addresses a
-    INNER JOIN (
-      SELECT addressId, MAX(checkedAt) as maxDate
-      FROM serviceability_checks
-      GROUP BY addressId
-    ) latest ON a.id = latest.addressId
-    INNER JOIN serviceability_checks sc ON sc.addressId = latest.addressId AND sc.checkedAt = latest.maxDate
-    WHERE sc.serviceabilityType = 'none' AND (sc.error IS NULL OR sc.error = '')
-  `.then(result => Number(result[0]?.count || 0));
-  
-  // Count unique addresses that have been checked (for accurate percentages)
-  const totalCheckedAddresses = await prisma.$queryRaw<[{ count: bigint }]>`
-    SELECT COUNT(DISTINCT addressId) as count
-    FROM serviceability_checks
-    WHERE error IS NULL OR error = ''
-  `.then(result => Number(result[0]?.count || 0));
+    // ── Per-selection stats ──
+    // Single query for ALL selections replaces 5*N sequential queries (massive perf win).
+    const selectionStatsRows = await prisma.$queryRaw<{
+      selectionId: string;
+      checkedCount: bigint;
+      serviceableCount: bigint;
+      preorderCount: bigint;
+      noServiceCount: bigint;
+      errorCount: bigint;
+    }[]>`
+      WITH latest_checks AS (
+        SELECT DISTINCT ON ("addressId")
+          "addressId",
+          "serviceabilityType",
+          error
+        FROM serviceability_checks
+        ORDER BY "addressId", "checkedAt" DESC
+      )
+      SELECT
+        atas."B" as "selectionId",
+        COUNT(DISTINCT CASE WHEN lc."addressId" IS NOT NULL THEN a.id END) as "checkedCount",
+        COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'serviceable' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "serviceableCount",
+        COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'preorder' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "preorderCount",
+        COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'none' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "noServiceCount",
+        COUNT(DISTINCT CASE WHEN lc.error IS NOT NULL AND lc.error != '' THEN a.id END) as "errorCount"
+      FROM addresses a
+      INNER JOIN "_AddressToAddressSelection" atas ON a.id = atas."A"
+      LEFT JOIN latest_checks lc ON a.id = lc."addressId"
+      GROUP BY atas."B"
+    `;
 
-  // Check for active jobs
-  const activeJobCount = await prisma.batchJob.count({
-    where: { status: { in: ['running', 'pending'] } },
-  });
-
-  // Get stats per selection with error handling
-  // Use optimized queries for large datasets
-  const selectionsWithStats = await Promise.all(
-    selections.map(async (selection) => {
-      try {
-        const selectionId = selection.id;
-        
-        // Use raw queries for better performance with large selections
-        // Convert BigInt to number for JavaScript arithmetic
-        // "checkedCount" should match the batch-check API's notion of "checked" (has any latest check),
-        // so "uncheckedCount" means addresses with zero checks.
-        const checkedCount = await prisma.$queryRaw<[{ count: bigint }]>`
-          SELECT COUNT(DISTINCT a.id) as count
-          FROM addresses a
-          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
-          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
-          WHERE atas.B = ${selectionId}
-            AND sc.checkedAt = (
-              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
-            )
-        `.then(result => Number(result[0]?.count || 0));
-
-        const serviceableCount = await prisma.$queryRaw<[{ count: bigint }]>`
-          SELECT COUNT(DISTINCT a.id) as count
-          FROM addresses a
-          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
-          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
-          WHERE atas.B = ${selectionId}
-            AND sc.serviceabilityType = 'serviceable'
-            AND (sc.error IS NULL OR sc.error = '')
-            AND sc.checkedAt = (
-              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
-            )
-        `.then(result => Number(result[0]?.count || 0));
-
-        const preorderCount = await prisma.$queryRaw<[{ count: bigint }]>`
-          SELECT COUNT(DISTINCT a.id) as count
-          FROM addresses a
-          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
-          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
-          WHERE atas.B = ${selectionId}
-            AND sc.serviceabilityType = 'preorder'
-            AND (sc.error IS NULL OR sc.error = '')
-            AND sc.checkedAt = (
-              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
-            )
-        `.then(result => Number(result[0]?.count || 0));
-
-        const noServiceCount = await prisma.$queryRaw<[{ count: bigint }]>`
-          SELECT COUNT(DISTINCT a.id) as count
-          FROM addresses a
-          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
-          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
-          WHERE atas.B = ${selectionId}
-            AND sc.serviceabilityType = 'none'
-            AND (sc.error IS NULL OR sc.error = '')
-            AND sc.checkedAt = (
-              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
-            )
-        `.then(result => Number(result[0]?.count || 0));
-
-        const errorCount = await prisma.$queryRaw<[{ count: bigint }]>`
-          SELECT COUNT(DISTINCT a.id) as count
-          FROM addresses a
-          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
-          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
-          WHERE atas.B = ${selectionId}
-            AND sc.error IS NOT NULL
-            AND sc.error != ''
-            AND sc.checkedAt = (
-              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
-            )
-        `.then(result => Number(result[0]?.count || 0));
-
-        const totalAddresses = selection._count.addresses;
-        const uncheckedCount = totalAddresses - checkedCount;
-
-        return {
-          id: selection.id,
-          name: selection.name,
-          _count: selection._count,
-          checkedCount,
-          serviceableCount,
-          preorderCount,
-          noServiceCount,
-          errorCount,
-          uncheckedCount,
-        };
-      } catch (error) {
-        console.error(`Error loading stats for selection ${selection.id}:`, error);
-        // Return safe default values if there's an error
-        return {
-          id: selection.id,
-          name: selection.name,
-          _count: selection._count,
-          checkedCount: 0,
-          serviceableCount: 0,
-          preorderCount: 0,
-          noServiceCount: 0,
-          errorCount: 0,
-          uncheckedCount: 0,
-        };
-      }
-    })
-  );
-
-  // Sort selections: active jobs first, then by creation date
-  const sortedSelections = selectionsWithStats.sort((a, b) => {
-    // Check if selection has an active job (running, pending, or paused)
-    const aHasActiveJob = recentJobs.some(
-      job => job.selectionId === a.id && ['running', 'pending', 'paused'].includes(job.status)
+    // Build a lookup map from the stats query
+    const statsMap = new Map(
+      selectionStatsRows.map((row) => [row.selectionId, row])
     );
-    const bHasActiveJob = recentJobs.some(
-      job => job.selectionId === b.id && ['running', 'pending', 'paused'].includes(job.status)
-    );
-    
-    // If one has active job and the other doesn't, prioritize the one with active job
-    if (aHasActiveJob && !bHasActiveJob) return -1;
-    if (!aHasActiveJob && bHasActiveJob) return 1;
-    
-    // Otherwise, maintain creation date order (already sorted from query)
-    return 0;
-  });
+
+    // Check for active jobs
+    const activeJobCount = await prisma.batchJob.count({
+      where: { status: { in: ['running', 'pending'] } },
+    });
+
+    // Merge selection metadata with computed stats
+    const selectionsWithStats = selections.map((selection) => {
+      const stats = statsMap.get(selection.id);
+      const checkedCount = Number(stats?.checkedCount || 0);
+      const totalAddr = selection._count.addresses;
+
+      return {
+        id: selection.id,
+        name: selection.name,
+        _count: selection._count,
+        checkedCount,
+        serviceableCount: Number(stats?.serviceableCount || 0),
+        preorderCount: Number(stats?.preorderCount || 0),
+        noServiceCount: Number(stats?.noServiceCount || 0),
+        errorCount: Number(stats?.errorCount || 0),
+        uncheckedCount: totalAddr - checkedCount,
+      };
+    });
+
+    // Sort selections: active jobs first, then by creation date
+    const sortedSelections = selectionsWithStats.sort((a, b) => {
+      const aHasActiveJob = recentJobs.some(
+        job => job.selectionId === a.id && ['running', 'pending', 'paused'].includes(job.status)
+      );
+      const bHasActiveJob = recentJobs.some(
+        job => job.selectionId === b.id && ['running', 'pending', 'paused'].includes(job.status)
+      );
+
+      if (aHasActiveJob && !bHasActiveJob) return -1;
+      if (!aHasActiveJob && bHasActiveJob) return 1;
+      return 0;
+    });
 
     return {
       sources,
@@ -252,7 +180,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     };
   } catch (error) {
     console.error('Error in getDashboardStats:', error);
-    // Return safe defaults if there's a catastrophic error
     return {
       sources: [],
       selections: [],
@@ -267,4 +194,3 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     };
   }
 }
-

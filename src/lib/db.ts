@@ -1,18 +1,29 @@
 import { PrismaClient } from '../generated/prisma';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { PrismaPg } from '@prisma/adapter-pg';
+import pg from 'pg';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-// Prisma ORM v7 uses driver adapters for direct DB connections.
-// Keep the URL simple (SQLite file URL); tune concurrency via PRAGMAs below.
-const databaseUrl = process.env.DATABASE_URL || 'file:./prisma/dev.db';
+const rawUrl = process.env.DATABASE_URL ?? '';
+
+// Strip sslmode from the connection string so it doesn't override the Pool's ssl config.
+// pg v8+ treats sslmode=require as verify-full which rejects Supabase's certificate chain.
+// We handle SSL through the Pool's native ssl option instead.
+const connectionString = rawUrl.replace(/[?&]sslmode=[^&]*/g, (match, offset) => {
+  // If this was the first query param (after ?), replace ? with nothing or fix the next &
+  return offset === rawUrl.indexOf('?') ? '?' : '';
+}).replace(/\?$/, '').replace(/\?&/, '?');
 
 export const prisma =
   globalForPrisma.prisma ??
   (() => {
-    const adapter = new PrismaBetterSqlite3({ url: databaseUrl });
+    const pool = new pg.Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false },
+    });
+    const adapter = new PrismaPg(pool);
     return new PrismaClient({
       log: ['error', 'warn'],
       adapter,
@@ -23,25 +34,4 @@ if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }
 
-// Enable WAL mode for better concurrent read/write performance
-// WAL (Write-Ahead Logging) allows readers to read while writers write,
-// which is critical for preventing timeouts during large uploads
-prisma.$queryRawUnsafe('PRAGMA journal_mode = WAL;')
-  .then(() => {
-    console.log('✓ SQLite WAL mode enabled for concurrent access');
-  })
-  .catch(err => {
-    console.error('Failed to enable WAL mode:', err);
-  });
-
-// Increase busy timeout to reduce SQLITE_BUSY during large operations.
-prisma.$queryRawUnsafe('PRAGMA busy_timeout = 60000;')
-  .then(() => {
-    console.log('✓ SQLite busy_timeout set to 60000ms');
-  })
-  .catch(err => {
-    console.error('Failed to set SQLite busy_timeout:', err);
-  });
-
 export default prisma;
-

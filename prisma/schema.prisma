@@ -7,7 +7,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // Track uploaded GeoJSON source files
@@ -101,11 +102,13 @@ model ServiceabilityCheck {
   // Error tracking
   error           String?
   
-  @@index([addressId])
+  // Composite index for efficient "latest check per address" queries (DISTINCT ON / ORDER BY)
+  @@index([addressId, checkedAt(sort: Desc)])
+  // Keep individual indexes for filtered queries
   @@index([serviceable])
   @@index([serviceabilityType])
   @@index([checkedAt])
-  @@index([selectionId])
+  @@index([selectionId, checkedAt(sort: Desc)])
   @@map("serviceability_checks")
 }
 
@@ -133,5 +136,7 @@ model BatchJob {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   
+  // Composite index for "find active job for selection" queries
+  @@index([selectionId, status])
   @@map("batch_jobs")
 }

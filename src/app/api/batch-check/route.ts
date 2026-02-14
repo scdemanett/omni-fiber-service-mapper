@@ -6,6 +6,7 @@ import {
   updateBatchJobStatus,
   recordServiceabilityCheck,
   getAddressesByServiceabilityType,
+  getAddressesWithErrors,
 } from '@/lib/batch-processor';
 import { isServiceable, type ShopperResponse } from '@/lib/omni-decoder';
 import { fetchShopperData } from '@/lib/omni-shopper-api';
@@ -74,38 +75,22 @@ async function handleStart(selectionId: string, name: string, recheckType?: 'unc
     );
   }
 
-  // Get addresses based on recheck type
-  let addresses;
+  // Get addresses based on recheck type.
+  // All filtering is pushed to the database via LATERAL JOINs.
+  let addresses: { id: string }[];
   const recheckMode = recheckType || 'unchecked';
   
   if (recheckMode === 'preorder') {
-    // Re-check only addresses that were preorder in their last check
     const preorderAddresses = await getAddressesByServiceabilityType(selectionId, 'preorder');
     addresses = preorderAddresses.map(a => ({ id: a.id }));
   } else if (recheckMode === 'noservice') {
-    // Re-check only addresses that had no service in their last check
     const noServiceAddresses = await getAddressesByServiceabilityType(selectionId, 'none');
     addresses = noServiceAddresses.map(a => ({ id: a.id }));
   } else if (recheckMode === 'errors') {
-    // Re-check addresses that have error messages in their last check
-    const addressesWithErrors = await prisma.address.findMany({
-      where: {
-        selections: { some: { id: selectionId } },
-      },
-      include: {
-        checks: {
-          orderBy: { checkedAt: 'desc' },
-          take: 1,
-        },
-      },
-    });
-    
-    // Filter to only those with errors
-    addresses = addressesWithErrors
-      .filter((a) => a.checks[0]?.error != null && a.checks[0]?.error !== '')
-      .map((a) => ({ id: a.id }));
+    // Use the new DB-level error filtering instead of loading all + filtering in memory
+    const errorAddresses = await getAddressesWithErrors(selectionId);
+    addresses = errorAddresses.map(a => ({ id: a.id }));
   } else if (recheckMode === 'all') {
-    // Check all addresses (useful for re-checking everything)
     addresses = await prisma.address.findMany({
       where: {
         selections: { some: { id: selectionId } },
@@ -117,7 +102,7 @@ async function handleStart(selectionId: string, name: string, recheckType?: 'unc
     addresses = await prisma.address.findMany({
       where: {
         selections: { some: { id: selectionId } },
-        checks: { none: {} }, // Only addresses without any checks
+        checks: { none: {} },
       },
       select: { id: true },
     });
@@ -298,41 +283,18 @@ async function processBatch(jobId: string, selectionId: string) {
   await updateBatchJobStatus(jobId, 'running');
   console.log(`Job ${jobId} status updated to 'running'`);
 
-  // Get addresses based on the job's recheck type
-  let addresses;
+  // Get addresses based on the job's recheck type.
+  // All filtering uses DB-level queries (LATERAL JOINs) instead of in-memory filtering.
+  let addresses: { id: string; addressString: string }[];
   const recheckType = job.recheckType || 'unchecked';
   
   if (recheckType === 'preorder') {
-    // Re-check only addresses that were preorder in their last check
-    const preorderAddresses = await getAddressesByServiceabilityType(selectionId, 'preorder');
-    addresses = preorderAddresses;
+    addresses = await getAddressesByServiceabilityType(selectionId, 'preorder');
   } else if (recheckType === 'noservice') {
-    // Re-check only addresses that had no service in their last check
-    const noServiceAddresses = await getAddressesByServiceabilityType(selectionId, 'none');
-    addresses = noServiceAddresses;
+    addresses = await getAddressesByServiceabilityType(selectionId, 'none');
   } else if (recheckType === 'errors') {
-    // Re-check addresses that have error messages in their last check
-    const addressesWithErrors = await prisma.address.findMany({
-      where: {
-        selections: { some: { id: selectionId } },
-      },
-      include: {
-        checks: {
-          orderBy: { checkedAt: 'desc' },
-          take: 1,
-        },
-      },
-    });
-    
-    // Filter to only those with errors and map to correct format
-    addresses = addressesWithErrors
-      .filter((a) => a.checks[0]?.error != null && a.checks[0]?.error !== '')
-      .map((a) => ({
-        id: a.id,
-        addressString: a.addressString,
-      }));
+    addresses = await getAddressesWithErrors(selectionId);
   } else if (recheckType === 'all') {
-    // Check all addresses
     addresses = await prisma.address.findMany({
       where: {
         selections: { some: { id: selectionId } },
@@ -348,7 +310,7 @@ async function processBatch(jobId: string, selectionId: string) {
     addresses = await prisma.address.findMany({
       where: {
         selections: { some: { id: selectionId } },
-        checks: { none: {} }, // Only addresses without checks
+        checks: { none: {} },
       },
       select: {
         id: true,

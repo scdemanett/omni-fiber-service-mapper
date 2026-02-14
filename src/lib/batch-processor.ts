@@ -1,5 +1,8 @@
 /**
  * Batch Processor - Resilient batch checking with resume capability
+ * 
+ * All address-filtering queries use PostgreSQL LATERAL JOINs to push filtering
+ * to the database level instead of loading rows into memory.
  */
 
 import { prisma } from './db';
@@ -132,7 +135,6 @@ export async function recordServiceabilityCheck(
   };
 
   // Only increment the serviceability buckets for successful (non-error) attempts.
-  // Errors are tracked in ServiceabilityCheck.error and can be rechecked via recheckType='errors'.
   const incrementServiceable = !hasError && safeResult.serviceabilityType === 'serviceable' ? 1 : 0;
   const incrementPreorder = !hasError && safeResult.serviceabilityType === 'preorder' ? 1 : 0;
   const incrementNoService = !hasError && safeResult.serviceabilityType === 'none' ? 1 : 0;
@@ -153,13 +155,12 @@ export async function recordServiceabilityCheck(
         matchType: safeResult.matchType,
         apiCreateDate: safeResult.apiCreateDate ? new Date(safeResult.apiCreateDate) : null,
         apiUpdateDate: safeResult.apiUpdateDate ? new Date(safeResult.apiUpdateDate) : null,
-        error: hasError ? error!.substring(0, 1000) : null, // Limit error message length
+        error: hasError ? error!.substring(0, 1000) : null,
       },
     }),
     prisma.batchJob.update({
       where: { id: jobId },
       data: {
-        // checkedCount/currentIndex represent attempted addresses (success OR failure)
         checkedCount: { increment: 1 },
         serviceableCount: { increment: incrementServiceable },
         preorderCount: { increment: incrementPreorder },
@@ -172,7 +173,8 @@ export async function recordServiceabilityCheck(
 }
 
 /**
- * Get addresses for a selection that haven't been checked yet
+ * Get addresses for a selection that haven't been checked yet.
+ * Uses Prisma's relational filter (no in-memory filtering).
  */
 export async function getUncheckedAddresses(
   selectionId: string,
@@ -198,74 +200,124 @@ export async function getUncheckedAddresses(
 }
 
 /**
- * Get addresses from a selection that were not serviceable in the last check
+ * Get addresses from a selection that were not serviceable in their latest check.
+ * Uses a PostgreSQL LATERAL JOIN to filter at the database level.
  */
 export async function getNonServiceableAddresses(
   selectionId: string,
   limit?: number
 ): Promise<AddressToCheck[]> {
-  // Get all addresses in the selection with their latest check
-  const addresses = await prisma.address.findMany({
-    where: {
-      selections: {
-        some: { id: selectionId },
-      },
-    },
-    include: {
-      checks: {
-        orderBy: { checkedAt: 'desc' },
-        take: 1,
-      },
-    },
-    take: limit,
-  });
+  if (limit != null) {
+    return prisma.$queryRaw<AddressToCheck[]>`
+      SELECT a.id, a."addressString"
+      FROM addresses a
+      INNER JOIN "_AddressToAddressSelection" atas ON a.id = atas."A" AND atas."B" = ${selectionId}
+      INNER JOIN LATERAL (
+        SELECT serviceable
+        FROM serviceability_checks sc
+        WHERE sc."addressId" = a.id
+        ORDER BY sc."checkedAt" DESC
+        LIMIT 1
+      ) lc ON true
+      WHERE lc.serviceable = false
+      LIMIT ${limit}
+    `;
+  }
 
-  // Filter to only those whose latest check was not serviceable
-  return addresses
-    .filter((addr) => {
-      const latestCheck = addr.checks[0];
-      return !latestCheck || !latestCheck.serviceable;
-    })
-    .map((addr) => ({
-      id: addr.id,
-      addressString: addr.addressString,
-    }));
+  return prisma.$queryRaw<AddressToCheck[]>`
+    SELECT a.id, a."addressString"
+    FROM addresses a
+    INNER JOIN "_AddressToAddressSelection" atas ON a.id = atas."A" AND atas."B" = ${selectionId}
+    INNER JOIN LATERAL (
+      SELECT serviceable
+      FROM serviceability_checks sc
+      WHERE sc."addressId" = a.id
+      ORDER BY sc."checkedAt" DESC
+      LIMIT 1
+    ) lc ON true
+    WHERE lc.serviceable = false
+  `;
 }
 
 /**
- * Get addresses from a selection by their serviceability type in the last check
+ * Get addresses from a selection by their serviceability type in the latest check.
+ * Uses a PostgreSQL LATERAL JOIN to filter at the database level.
  */
 export async function getAddressesByServiceabilityType(
   selectionId: string,
   serviceabilityType: 'serviceable' | 'preorder' | 'none',
   limit?: number
 ): Promise<AddressToCheck[]> {
-  // Get all addresses in the selection with their latest check
-  const addresses = await prisma.address.findMany({
-    where: {
-      selections: {
-        some: { id: selectionId },
-      },
-    },
-    include: {
-      checks: {
-        orderBy: { checkedAt: 'desc' },
-        take: 1,
-      },
-    },
-    take: limit,
-  });
+  if (limit != null) {
+    return prisma.$queryRaw<AddressToCheck[]>`
+      SELECT a.id, a."addressString"
+      FROM addresses a
+      INNER JOIN "_AddressToAddressSelection" atas ON a.id = atas."A" AND atas."B" = ${selectionId}
+      INNER JOIN LATERAL (
+        SELECT "serviceabilityType"
+        FROM serviceability_checks sc
+        WHERE sc."addressId" = a.id
+        ORDER BY sc."checkedAt" DESC
+        LIMIT 1
+      ) lc ON true
+      WHERE lc."serviceabilityType" = ${serviceabilityType}
+      LIMIT ${limit}
+    `;
+  }
 
-  // Filter to only those whose latest check matches the serviceability type
-  return addresses
-    .filter((addr) => {
-      const latestCheck = addr.checks[0];
-      return latestCheck && latestCheck.serviceabilityType === serviceabilityType;
-    })
-    .map((addr) => ({
-      id: addr.id,
-      addressString: addr.addressString,
-    }));
+  return prisma.$queryRaw<AddressToCheck[]>`
+    SELECT a.id, a."addressString"
+    FROM addresses a
+    INNER JOIN "_AddressToAddressSelection" atas ON a.id = atas."A" AND atas."B" = ${selectionId}
+    INNER JOIN LATERAL (
+      SELECT "serviceabilityType"
+      FROM serviceability_checks sc
+      WHERE sc."addressId" = a.id
+      ORDER BY sc."checkedAt" DESC
+      LIMIT 1
+    ) lc ON true
+    WHERE lc."serviceabilityType" = ${serviceabilityType}
+  `;
+}
+
+/**
+ * Get addresses from a selection whose latest check has an error.
+ * Uses a PostgreSQL LATERAL JOIN to filter at the database level.
+ */
+export async function getAddressesWithErrors(
+  selectionId: string,
+  limit?: number
+): Promise<AddressToCheck[]> {
+  if (limit != null) {
+    return prisma.$queryRaw<AddressToCheck[]>`
+      SELECT a.id, a."addressString"
+      FROM addresses a
+      INNER JOIN "_AddressToAddressSelection" atas ON a.id = atas."A" AND atas."B" = ${selectionId}
+      INNER JOIN LATERAL (
+        SELECT error
+        FROM serviceability_checks sc
+        WHERE sc."addressId" = a.id
+        ORDER BY sc."checkedAt" DESC
+        LIMIT 1
+      ) lc ON true
+      WHERE lc.error IS NOT NULL AND lc.error != ''
+      LIMIT ${limit}
+    `;
+  }
+
+  return prisma.$queryRaw<AddressToCheck[]>`
+    SELECT a.id, a."addressString"
+    FROM addresses a
+    INNER JOIN "_AddressToAddressSelection" atas ON a.id = atas."A" AND atas."B" = ${selectionId}
+    INNER JOIN LATERAL (
+      SELECT error
+      FROM serviceability_checks sc
+      WHERE sc."addressId" = a.id
+      ORDER BY sc."checkedAt" DESC
+      LIMIT 1
+    ) lc ON true
+    WHERE lc.error IS NOT NULL AND lc.error != ''
+  `;
 }
 
 /**
@@ -324,4 +376,3 @@ export async function getAddressesForBatchJob(
 
   return [];
 }
-

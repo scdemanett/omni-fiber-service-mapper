@@ -11,8 +11,8 @@ export interface CreateSelectionResult {
 }
 
 /**
- * Create a new address selection from filter criteria
- * Uses batching to handle large selections (SQLite has expression tree limit of 10,000)
+ * Create a new address selection from filter criteria.
+ * PostgreSQL handles large IN-lists natively, so no batching needed.
  */
 export async function createSelection(
   name: string,
@@ -44,31 +44,17 @@ export async function createSelection(
       return { success: false, error: 'No addresses match the filter criteria' };
     }
 
-    // Create the selection first without addresses
+    // Create the selection and connect all addresses in one operation.
     const selection = await prisma.addressSelection.create({
       data: {
         name,
         description,
         filterCriteria: JSON.stringify(filters),
+        addresses: {
+          connect: addresses.map((a) => ({ id: a.id })),
+        },
       },
     });
-
-    // Batch connect addresses to avoid SQLite expression tree limit
-    // SQLite has a limit of 10,000 nested expressions, so we batch at 5,000 for safety
-    const BATCH_SIZE = 5000;
-    const addressIds = addresses.map((a) => a.id);
-    
-    for (let i = 0; i < addressIds.length; i += BATCH_SIZE) {
-      const batch = addressIds.slice(i, i + BATCH_SIZE);
-      await prisma.addressSelection.update({
-        where: { id: selection.id },
-        data: {
-          addresses: {
-            connect: batch.map((id) => ({ id })),
-          },
-        },
-      });
-    }
 
     revalidatePath('/selections');
     revalidatePath('/');
@@ -88,8 +74,8 @@ export async function createSelection(
 }
 
 /**
- * Get all selections with address counts and serviceability stats
- * Optimized for large datasets using raw queries
+ * Get all selections with address counts and serviceability stats.
+ * Uses a single CTE + DISTINCT ON query for all selections (replaces 5*N sequential queries).
  */
 export async function getSelections() {
   const selections = await prisma.addressSelection.findMany({
@@ -101,104 +87,55 @@ export async function getSelections() {
     },
   });
 
-  // Get serviceability stats for each selection using optimized queries
-  const selectionsWithStats = await Promise.all(
-    selections.map(async (selection) => {
-      try {
-        const selectionId = selection.id;
-        
-        // Count checked addresses (have at least one check, regardless of error)
-        // Convert BigInt to number for JavaScript arithmetic
-        const checkedCount = await prisma.$queryRaw<[{ count: bigint }]>`
-          SELECT COUNT(DISTINCT a.id) as count
-          FROM addresses a
-          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
-          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
-          WHERE atas.B = ${selectionId}
-            AND sc.checkedAt = (
-              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
-            )
-        `.then(result => Number(result[0]?.count || 0));
+  // Single query computes stats for ALL selections at once
+  const selectionStatsRows = await prisma.$queryRaw<{
+    selectionId: string;
+    checkedCount: bigint;
+    serviceableCount: bigint;
+    preorderCount: bigint;
+    noServiceCount: bigint;
+    errorCount: bigint;
+  }[]>`
+    WITH latest_checks AS (
+      SELECT DISTINCT ON ("addressId")
+        "addressId",
+        "serviceabilityType",
+        error
+      FROM serviceability_checks
+      ORDER BY "addressId", "checkedAt" DESC
+    )
+    SELECT
+      atas."B" as "selectionId",
+      COUNT(DISTINCT CASE WHEN lc."addressId" IS NOT NULL THEN a.id END) as "checkedCount",
+      COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'serviceable' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "serviceableCount",
+      COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'preorder' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "preorderCount",
+      COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'none' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "noServiceCount",
+      COUNT(DISTINCT CASE WHEN lc.error IS NOT NULL AND lc.error != '' THEN a.id END) as "errorCount"
+    FROM addresses a
+    INNER JOIN "_AddressToAddressSelection" atas ON a.id = atas."A"
+    LEFT JOIN latest_checks lc ON a.id = lc."addressId"
+    GROUP BY atas."B"
+  `;
 
-        const serviceableCount = await prisma.$queryRaw<[{ count: bigint }]>`
-          SELECT COUNT(DISTINCT a.id) as count
-          FROM addresses a
-          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
-          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
-          WHERE atas.B = ${selectionId}
-            AND sc.serviceabilityType = 'serviceable'
-            AND (sc.error IS NULL OR sc.error = '')
-            AND sc.checkedAt = (
-              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
-            )
-        `.then(result => Number(result[0]?.count || 0));
-
-        const preorderCount = await prisma.$queryRaw<[{ count: bigint }]>`
-          SELECT COUNT(DISTINCT a.id) as count
-          FROM addresses a
-          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
-          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
-          WHERE atas.B = ${selectionId}
-            AND sc.serviceabilityType = 'preorder'
-            AND (sc.error IS NULL OR sc.error = '')
-            AND sc.checkedAt = (
-              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
-            )
-        `.then(result => Number(result[0]?.count || 0));
-
-        const noServiceCount = await prisma.$queryRaw<[{ count: bigint }]>`
-          SELECT COUNT(DISTINCT a.id) as count
-          FROM addresses a
-          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
-          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
-          WHERE atas.B = ${selectionId}
-            AND sc.serviceabilityType = 'none'
-            AND (sc.error IS NULL OR sc.error = '')
-            AND sc.checkedAt = (
-              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
-            )
-        `.then(result => Number(result[0]?.count || 0));
-
-        const errorCount = await prisma.$queryRaw<[{ count: bigint }]>`
-          SELECT COUNT(DISTINCT a.id) as count
-          FROM addresses a
-          INNER JOIN _AddressToAddressSelection atas ON a.id = atas.A
-          INNER JOIN serviceability_checks sc ON a.id = sc.addressId
-          WHERE atas.B = ${selectionId}
-            AND sc.error IS NOT NULL
-            AND sc.error != ''
-            AND sc.checkedAt = (
-              SELECT MAX(checkedAt) FROM serviceability_checks WHERE addressId = a.id
-            )
-        `.then(result => Number(result[0]?.count || 0));
-
-        const totalAddresses = selection._count.addresses;
-        const uncheckedCount = totalAddresses - checkedCount;
-
-        return {
-          ...selection,
-          checkedCount,
-          serviceableCount,
-          preorderCount,
-          noServiceCount,
-          errorCount,
-          uncheckedCount,
-        };
-      } catch (error) {
-        console.error(`Error loading stats for selection ${selection.id}:`, error);
-        // Return safe defaults on error
-        return {
-          ...selection,
-          checkedCount: 0,
-          serviceableCount: 0,
-          preorderCount: 0,
-          noServiceCount: 0,
-          errorCount: 0,
-          uncheckedCount: selection._count.addresses,
-        };
-      }
-    })
+  const statsMap = new Map(
+    selectionStatsRows.map((row) => [row.selectionId, row])
   );
+
+  const selectionsWithStats = selections.map((selection) => {
+    const stats = statsMap.get(selection.id);
+    const checkedCount = Number(stats?.checkedCount || 0);
+    const totalAddresses = selection._count.addresses;
+
+    return {
+      ...selection,
+      checkedCount,
+      serviceableCount: Number(stats?.serviceableCount || 0),
+      preorderCount: Number(stats?.preorderCount || 0),
+      noServiceCount: Number(stats?.noServiceCount || 0),
+      errorCount: Number(stats?.errorCount || 0),
+      uncheckedCount: totalAddresses - checkedCount,
+    };
+  });
 
   return selectionsWithStats;
 }
@@ -271,7 +208,8 @@ export async function updateSelection(
 }
 
 /**
- * Add additional addresses to an existing selection from the same or different source
+ * Add additional addresses to an existing selection from the same or different source.
+ * PostgreSQL handles large connection sets natively (no batching needed).
  */
 export async function addAddressesToSelection(
   selectionId: string,
@@ -324,20 +262,15 @@ export async function addAddressesToSelection(
       return { success: false, error: 'No new addresses match the filter criteria (all matching addresses are already in the selection)' };
     }
 
-    // Batch connect new addresses to avoid SQLite expression tree limit
-    const BATCH_SIZE = 5000;
-    
-    for (let i = 0; i < newAddressIds.length; i += BATCH_SIZE) {
-      const batch = newAddressIds.slice(i, i + BATCH_SIZE);
-      await prisma.addressSelection.update({
-        where: { id: selectionId },
-        data: {
-          addresses: {
-            connect: batch.map((id) => ({ id })),
-          },
+    // Connect all new addresses in one operation (no batching needed for PostgreSQL)
+    await prisma.addressSelection.update({
+      where: { id: selectionId },
+      data: {
+        addresses: {
+          connect: newAddressIds.map((id) => ({ id })),
         },
-      });
-    }
+      },
+    });
 
     // Update the filter criteria to reflect the addition
     const currentFilters = JSON.parse(selection.filterCriteria || '{}');
@@ -374,7 +307,8 @@ export async function addAddressesToSelection(
 }
 
 /**
- * Get addresses for a selection with pagination
+ * Get addresses for a selection with pagination and filtering.
+ * All filtering and pagination is pushed to the database (no in-memory filtering).
  */
 export async function getSelectionAddresses(
   selectionId: string,
@@ -384,49 +318,91 @@ export async function getSelectionAddresses(
 ) {
   const skip = (page - 1) * pageSize;
 
-  const baseWhere = {
+  // ── Unchecked filter: addresses with zero checks ──
+  if (filter === 'unchecked') {
+    const where = {
+      selections: { some: { id: selectionId } },
+      checks: { none: {} },
+    };
+
+    const [addresses, total] = await Promise.all([
+      prisma.address.findMany({
+        where,
+        include: { checks: { orderBy: { checkedAt: 'desc' as const }, take: 1 } },
+        orderBy: { addressString: 'asc' },
+        skip,
+        take: pageSize,
+      }),
+      prisma.address.count({ where }),
+    ]);
+
+    return { addresses, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+  }
+
+  // ── Serviceable / Not-serviceable filters: need latest check status ──
+  if (filter === 'serviceable' || filter === 'not-serviceable') {
+    const isServiceable = filter === 'serviceable';
+
+    // Count total matching addresses
+    const [countResult] = await prisma.$queryRaw<[{ count: bigint }]>`
+      SELECT COUNT(*) as count
+      FROM addresses a
+      INNER JOIN "_AddressToAddressSelection" atas ON a.id = atas."A" AND atas."B" = ${selectionId}
+      INNER JOIN LATERAL (
+        SELECT serviceable
+        FROM serviceability_checks sc
+        WHERE sc."addressId" = a.id
+        ORDER BY sc."checkedAt" DESC
+        LIMIT 1
+      ) lc ON true
+      WHERE lc.serviceable = ${isServiceable}
+    `;
+    const total = Number(countResult?.count || 0);
+
+    // Get paginated IDs (ordered)
+    const pageRows = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT a.id
+      FROM addresses a
+      INNER JOIN "_AddressToAddressSelection" atas ON a.id = atas."A" AND atas."B" = ${selectionId}
+      INNER JOIN LATERAL (
+        SELECT serviceable
+        FROM serviceability_checks sc
+        WHERE sc."addressId" = a.id
+        ORDER BY sc."checkedAt" DESC
+        LIMIT 1
+      ) lc ON true
+      WHERE lc.serviceable = ${isServiceable}
+      ORDER BY a."addressString" ASC
+      LIMIT ${pageSize} OFFSET ${skip}
+    `;
+
+    // Fetch full address data with Prisma (preserves expected return shape)
+    const addresses = pageRows.length > 0
+      ? await prisma.address.findMany({
+          where: { id: { in: pageRows.map((r) => r.id) } },
+          include: { checks: { orderBy: { checkedAt: 'desc' as const }, take: 1 } },
+          orderBy: { addressString: 'asc' },
+        })
+      : [];
+
+    return { addresses, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+  }
+
+  // ── Default: all addresses (no status filter) ──
+  const where = {
     selections: { some: { id: selectionId } },
   };
 
-  // First get all addresses with their checks
-  const addresses = await prisma.address.findMany({
-    where: baseWhere,
-    include: {
-      checks: {
-        orderBy: { checkedAt: 'desc' },
-        take: 1,
-      },
-    },
-    orderBy: { addressString: 'asc' },
-  });
+  const [addresses, total] = await Promise.all([
+    prisma.address.findMany({
+      where,
+      include: { checks: { orderBy: { checkedAt: 'desc' as const }, take: 1 } },
+      orderBy: { addressString: 'asc' },
+      skip,
+      take: pageSize,
+    }),
+    prisma.address.count({ where }),
+  ]);
 
-  // Apply filter in memory (simpler for SQLite)
-  let filteredAddresses = addresses;
-  if (filter && filter !== 'all') {
-    filteredAddresses = addresses.filter((a) => {
-      const latestCheck = a.checks[0];
-      switch (filter) {
-        case 'serviceable':
-          return latestCheck?.serviceable === true;
-        case 'not-serviceable':
-          return latestCheck?.serviceable === false;
-        case 'unchecked':
-          return !latestCheck;
-        default:
-          return true;
-      }
-    });
-  }
-
-  const total = filteredAddresses.length;
-  const paginatedAddresses = filteredAddresses.slice(skip, skip + pageSize);
-
-  return {
-    addresses: paginatedAddresses,
-    total,
-    page,
-    pageSize,
-    totalPages: Math.ceil(total / pageSize),
-  };
+  return { addresses, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
 }
-
