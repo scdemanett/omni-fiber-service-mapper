@@ -8,7 +8,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // Track uploaded GeoJSON source files
@@ -84,6 +83,8 @@ model ServiceabilityCheck {
   // Check metadata
   checkedAt       DateTime  @default(now())
   selectionId     String?   // Which campaign triggered this check
+  batchJobId      String?   // Which batch run created this check
+  batchJob        BatchJob? @relation(fields: [batchJobId], references: [id], onDelete: SetNull)
   
   // Serviceability results
   serviceable     Boolean
@@ -104,8 +105,7 @@ model ServiceabilityCheck {
   
   // Composite index for efficient "latest check per address" queries (DISTINCT ON / ORDER BY)
   @@index([addressId, checkedAt(sort: Desc)])
-  // Keep individual indexes for filtered queries
-  @@index([serviceable])
+  @@index([batchJobId])
   @@index([serviceabilityType])
   @@index([checkedAt])
   @@index([selectionId, checkedAt(sort: Desc)])
@@ -135,6 +135,8 @@ model BatchJob {
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  
+  checks          ServiceabilityCheck[]
   
   // Composite index for "find active job for selection" queries
   @@index([selectionId, status])

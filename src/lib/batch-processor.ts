@@ -145,6 +145,7 @@ export async function recordServiceabilityCheck(
       data: {
         addressId,
         selectionId: selectionId ?? undefined,
+        batchJobId: jobId,
         serviceable: safeResult.serviceable,
         serviceabilityType: safeResult.serviceabilityType,
         salesType: safeResult.salesType,
