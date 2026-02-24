@@ -390,6 +390,13 @@ function MapContent() {
   const noServiceCount = addresses.filter((a) => a.checks[0]?.serviceabilityType === 'none').length;
   const uncheckedCount = addresses.filter((a) => !a.checks[0]).length;
 
+  const latestCheckDate = addresses.reduce<Date | null>((latest, addr) => {
+    const checkedAt = addr.checks[0]?.checkedAt;
+    if (!checkedAt) return latest;
+    const d = new Date(checkedAt);
+    return !latest || d > latest ? d : latest;
+  }, null);
+
   const handleToggleTimeline = () => {
     setTimelineEnabled(!timelineEnabled);
   };
@@ -647,16 +654,23 @@ function MapContent() {
         {selectedSelection && !isLoadingAddresses && (
           <Card className="absolute bottom-4 left-4 z-[1000] w-64 bg-card/95 backdrop-blur">
             <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">
-                  {selectedSelection.name}
-                </CardTitle>
-                {timelineEnabled && (
-                  <Badge variant="secondary" className="text-xs">
-                    <Clock className="mr-1 h-3 w-3" />
-                    Historical
-                  </Badge>
-                )}
+              <div className="flex items-start justify-between">
+                <div className="flex flex-col gap-1">
+                  <CardTitle className="text-sm font-medium">
+                    {selectedSelection.name}
+                  </CardTitle>
+                  {timelineEnabled ? (
+                    <Badge variant="secondary" className="w-fit text-xs">
+                      <Clock className="mr-1 h-3 w-3" />
+                      Historical
+                    </Badge>
+                  ) : latestCheckDate ? (
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      Showing data from {format(latestCheckDate, 'MMM d, yyyy')}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-2 text-xs">
