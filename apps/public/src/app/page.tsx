@@ -268,7 +268,7 @@ export default function Dashboard() {
                             <span>{selection._count.addresses.toLocaleString()} total</span>
                             <span>•</span>
                             <span className="text-serviceable">
-                              {selection.serviceableCount} avail
+                              {selection.serviceableCount} available
                             </span>
                             <span>•</span>
                             <span className="text-preorder">
@@ -276,7 +276,7 @@ export default function Dashboard() {
                             </span>
                             <span>•</span>
                             <span className="text-no-service">
-                              {selection.noServiceCount} none
+                              {selection.noServiceCount} no service
                             </span>
                           </div>
                         </div>
@@ -334,9 +334,14 @@ export default function Dashboard() {
                         )}
                         <div>
                           <div className="font-medium">{displayName}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {job.checkedCount.toLocaleString()} / {job.totalAddresses.toLocaleString()}{' '}
-                            checked • {job.serviceableCount.toLocaleString()} serviceable
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span>{job.checkedCount.toLocaleString()} / {job.totalAddresses.toLocaleString()} checked</span>
+                            <span>•</span>
+                            <span className="text-serviceable">{job.serviceableCount.toLocaleString()} available</span>
+                            <span>•</span>
+                            <span className="text-preorder">{job.preorderCount.toLocaleString()} preorder</span>
+                            <span>•</span>
+                            <span className="text-no-service">{job.noServiceCount.toLocaleString()} no service</span>
                           </div>
                         </div>
                       </div>

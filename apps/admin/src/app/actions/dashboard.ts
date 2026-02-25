@@ -47,7 +47,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     const [sources, selections, totalAddresses, totalChecks, recentJobs] = await Promise.all([
       prisma.geoJSONSource.findMany({
         orderBy: { uploadedAt: 'desc' },
-        take: 5,
         include: { _count: { select: { addresses: true } } },
       }),
       prisma.addressSelection.findMany({
