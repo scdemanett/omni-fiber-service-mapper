@@ -34,20 +34,26 @@ npm run dev:public
 
 ## Screenshots
 
-### Dashboard
-![Dashboard view showing overview statistics and quick access to all features](/screenshots/dashboard.jpg?v=1)
+### Admin Dashboard
+![Dashboard view showing overview statistics and quick access to all features](/screenshots/admin-dashboard.jpg?v=2)
 
-### GeoJSON Upload
-![Upload interface for importing address data from GeoJSON files](/screenshots/upload.jpg?v=1)
+### Admin GeoJSON Upload
+![Upload interface for importing address data from GeoJSON files](/screenshots/admin-upload.jpg?v=2)
 
-### Address Selections
-![Selection management interface for creating and managing address campaigns](/screenshots/selections.jpg?v=1)
+### Admin Address Selections
+![Selection management interface for creating and managing address campaigns](/screenshots/admin-selections.jpg?v=2)
 
-### Batch Serviceability Checker
-![Batch checker interface with progress tracking and pause/resume controls](/screenshots/checker.jpg?v=1)
+### Admin Batch Serviceability Checker
+![Batch checker interface with progress tracking and pause/resume controls](/screenshots/admin-checker.jpg?v=2)
 
-### Interactive Map with Timeline
-![Interactive map with color-coded service availability markers and filtering options](/screenshots/map.jpg?v=1)
+### Admin Interactive Map with Timeline
+![Interactive map with color-coded service availability markers and filtering options](/screenshots/admin-map.jpg?v=2)
+
+### Public Dashboard
+![Dashboard view showing overview statistics and quick access to all features](/screenshots/public-dashboard.jpg?v=2)
+
+### Public Interactive Map with Timeline
+![Interactive map with color-coded service availability markers and filtering options](/screenshots/public-map.jpg?v=2)
 
 ## Repository Structure
 
@@ -72,7 +78,7 @@ A read-only public-facing site showing the dashboard and interactive map. Reads 
 Single source of truth for the Prisma schema and client. Both apps import the Prisma client from here. Also contains `prisma.config.ts` for CLI migrations.
 
 ### packages/lib
-Pure TypeScript utilities shared across both apps: fiber service API decoder, batch processing logic, GeoJSON parser, and general utilities.
+Pure TypeScript utilities shared across both apps: provider plugin system (registry, types, and UI metadata), fiber service API decoder, batch processing logic, GeoJSON parser, and general utilities.
 
 ### packages/ui
 Shared React components: `PollingProvider`, `SelectionProvider` context, and the Leaflet `ServiceMap` component.
@@ -160,6 +166,7 @@ Edit both `.env` files with your Supabase connection strings:
 | `DATABASE_URL` | `packages/db`, `apps/admin`, `apps/public` | Runtime connection (use transaction pooler port 6543 for Supabase) |
 | `DIRECT_URL` | `packages/db` | Prisma CLI migrations (direct connection port 5432) |
 | `NEXT_PUBLIC_BASE_URL` | `apps/admin`, `apps/public` | App base URL |
+| `NEXT_PUBLIC_OMNI_REFERRAL_URL` | `apps/admin`, `apps/public` | Omni Fiber referral link shown in map popups |
 
 #### 3️⃣ Setup Database
 
@@ -226,6 +233,7 @@ PORT=3001
 ### 3. Run Serviceability Checks *(admin app)*
 - Go to **Checker** page
 - Select your campaign
+- Choose a **Provider** (e.g. Omni Fiber)
 - Choose check mode (Unchecked / Preorder / All)
 - Start checking and monitor progress in real-time
 
@@ -248,9 +256,22 @@ Key points:
 - Use the Supabase **transaction pooler** URL (port 6543) for `DATABASE_URL`
 - The `vercel.json` in `apps/public` handles ignored build steps for monorepo-aware deploys
 
-## API Integration
+## Provider Architecture
 
-The application decodes the fiber service API responses through multiple layers:
+The application uses a plugin-based provider system so multiple ISP APIs can be supported without changing core logic. Each provider implements a common `ProviderConfig` interface with two methods: `fetch` (calls the ISP API) and `decode` (normalizes the response into a standard `ServiceabilityResult`).
+
+Providers are registered in `packages/lib/src/providers/registry.ts`. The checker UI and batch API route resolve the active provider by its slug (e.g. `omni-fiber`) at runtime.
+
+### Adding a New Provider
+
+1. Create `packages/lib/src/providers/<slug>.ts` implementing `ProviderConfig`
+2. Register it in `registry.ts`
+3. Add its display metadata to `ui-metadata.ts`
+4. Run a batch job — the dashboard "Tracking:" indicator will appear automatically once data exists
+
+### Omni Fiber API
+
+The Omni Fiber adapter decodes responses through multiple layers:
 1. Brotli decompression
 2. ROT13 cipher
 3. Custom UUdecode
@@ -270,8 +291,8 @@ Serviceability is determined by analyzing multiple fields:
 - **GeoJSONSource**: Uploaded address files
 - **Address**: Individual addresses with coordinates
 - **AddressSelection**: Named campaigns/selections
-- **ServiceabilityCheck**: Check results (preserves history)
-- **BatchJob**: Batch checking jobs with progress
+- **ServiceabilityCheck**: Check results (preserves history). Includes a `provider` field (e.g. `omni-fiber`) and a compound index on `(addressId, provider, checkedAt DESC)` for efficient per-provider queries.
+- **BatchJob**: Batch checking jobs with progress. Includes a `provider` field so each run is attributed to the ISP that was checked.
 
 Schema lives in `packages/db/prisma/schema.prisma`.
 
