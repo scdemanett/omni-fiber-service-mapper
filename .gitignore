@@ -1,7 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -13,12 +13,15 @@
 # testing
 /coverage
 
-# next.js
+# next.js build output (root app + workspace apps)
 /.next/
 /out/
+apps/*/.next/
+apps/*/out/
 
 # production
 /build
+apps/*/build
 
 # misc
 .DS_Store
@@ -37,6 +40,9 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 !.env.example
+apps/**/.env
+apps/**/.env.local
+!apps/**/.env.example
 
 # vercel
 .vercel
@@ -45,12 +51,14 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# prisma
+# prisma generated client (root and packages)
 /src/generated/prisma
+packages/db/src/generated/prisma
 /prisma/*.db
 /prisma/*.db-journal
 /prisma/*.db-shm
 /prisma/*.db-wal
+packages/db/prisma/*.db
 
 # reference data (large files)
 /.reference-files/*.json

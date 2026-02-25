@@ -1,0 +1,5 @@
+{
+  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- apps/public packages/",
+  "buildCommand": "cd ../.. && npm run build:public",
+  "installCommand": "cd ../.. && npm install"
+}

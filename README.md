@@ -1,6 +1,6 @@
 # Omni Fiber Service Mapper
 
-A Next.js application for tracking and visualizing Omni Fiber internet service availability across addresses. Features include batch serviceability checking, interactive mapping with timeline playback, and progress tracking for service rollout.
+A monorepo for tracking and visualizing Omni Fiber internet service availability across addresses. Features batch serviceability checking, interactive mapping with timeline playback, and a public-facing read-only dashboard deployable to Vercel.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
@@ -9,23 +9,28 @@ A Next.js application for tracking and visualizing Omni Fiber internet service a
 ## ⚡ Quick Start
 
 ```bash
-# Clone and setup
+# Clone and install all workspaces
 git clone <your-repo-url>
 cd omni-fiber-service-mapper
 npm install
 
-# Setup environment
-cp .env.example .env
+# Setup environment files
+cp packages/db/.env.example packages/db/.env
+cp apps/admin/.env.example apps/admin/.env
+# Edit both .env files with your database credentials
 
-# Setup database
-npx prisma generate
-npx prisma db push
+# Push schema to the database
+npm run db:push --workspace=packages/db
 
-# Start development server
-npm run dev
+# Start the admin app (full functionality)
+npm run dev:admin
+
+# Or start the public app (read-only dashboard + map)
+npm run dev:public
 ```
 
-Visit [http://localhost:3000](http://localhost:3000) to get started!
+- Admin app: [http://localhost:3000](http://localhost:3000)
+- Public app: [http://localhost:3001](http://localhost:3001)
 
 ## Screenshots
 
@@ -44,6 +49,34 @@ Visit [http://localhost:3000](http://localhost:3000) to get started!
 ### Interactive Map with Timeline
 ![Interactive map with color-coded service availability markers and filtering options](/screenshots/map.jpg?v=1)
 
+## Repository Structure
+
+```
+omni-fiber-service-mapper/
+├── apps/
+│   ├── admin/          # Full-featured local app (upload, checker, map, dashboard)
+│   └── public/         # Read-only public site (dashboard + map) — deploys to Vercel
+└── packages/
+    ├── db/             # Prisma schema, client, and CLI config
+    ├── lib/            # Shared utilities (API decoder, batch processor, parsers)
+    └── ui/             # Shared React components and context providers
+```
+
+### apps/admin
+The full application for local use. Handles GeoJSON uploads, address selections, batch serviceability checking, and data management. Not intended for public deployment.
+
+### apps/public
+A read-only public-facing site showing the dashboard and interactive map. Reads from the same Supabase database. Designed for deployment to Vercel.
+
+### packages/db
+Single source of truth for the Prisma schema and client. Both apps import the Prisma client from here. Also contains `prisma.config.ts` for CLI migrations.
+
+### packages/lib
+Pure TypeScript utilities shared across both apps: Omni Fiber API decoder, batch processing logic, GeoJSON parser, and general utilities.
+
+### packages/ui
+Shared React components: `PollingProvider`, `SelectionProvider` context, and the Leaflet `ServiceMap` component.
+
 ## Features
 
 ### 🗺️ Interactive Map View with Timeline
@@ -57,7 +90,7 @@ Visit [http://localhost:3000](http://localhost:3000) to get started!
 - Filter by service type
 - Export to GeoJSON
 
-### ✅ Batch Serviceability Checking
+### ✅ Batch Serviceability Checking *(admin only)*
 - Check thousands of addresses automatically
 - Five check modes:
   - **Unchecked**: Only new addresses
@@ -68,9 +101,9 @@ Visit [http://localhost:3000](http://localhost:3000) to get started!
 - Pause/resume capability
 - Live progress tracking
 - Smart error handling (errors don't pollute data)
-- Rate-limited API calls (0.5 seconds between requests)
+- Rate-limited API calls
 
-### 🎯 Address Selection & Management
+### 🎯 Address Selection & Management *(admin only)*
 - Upload GeoJSON files with address data
 - Create filtered selections by city, region, or postcode
 - Track multiple campaigns simultaneously
@@ -88,108 +121,135 @@ Visit [http://localhost:3000](http://localhost:3000) to get started!
 - **UI**: React, Tailwind CSS, shadcn/ui
 - **Maps**: Leaflet.js
 - **API Integration**: Omni Fiber getCatalog API with custom decoder
+- **Monorepo**: npm workspaces
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+ 
-- npm or pnpm
+- Node.js 18+
+- npm 7+ (workspaces support)
+- A PostgreSQL database — [Supabase](https://supabase.com/) recommended
 
 ### Installation
 
-Follow these steps to set up the project:
-
 #### 1️⃣ Clone and Install
+
 ```bash
 git clone <your-repo-url>
 cd omni-fiber-service-mapper
 npm install
 ```
 
-#### 2️⃣ Configure Environment
-```bash
-# Copy the example environment file
-cp .env.example .env
+This installs dependencies for all workspaces in one step.
 
-# Edit .env if needed (default values work for local development)
+#### 2️⃣ Configure Environment
+
+```bash
+# Database credentials for Prisma CLI
+cp packages/db/.env.example packages/db/.env
+
+# Admin app environment
+cp apps/admin/.env.example apps/admin/.env
 ```
 
-**Environment Variables** (see `.env.example`):
-- `DATABASE_URL` - PostgreSQL connection string (Supabase pooler or direct)
-- `DIRECT_URL` - Direct PostgreSQL connection for Prisma CLI migrations
-- `NEXT_PUBLIC_BASE_URL` - Application URL (default: `http://localhost:3000`)
-- `NODE_ENV` - Environment mode (development/production)
+Edit both `.env` files with your Supabase connection strings:
+
+| Variable | Used in | Purpose |
+|---|---|---|
+| `DATABASE_URL` | `packages/db`, `apps/admin`, `apps/public` | Runtime connection (use transaction pooler port 6543 for Supabase) |
+| `DIRECT_URL` | `packages/db` | Prisma CLI migrations (direct connection port 5432) |
+| `NEXT_PUBLIC_BASE_URL` | `apps/admin`, `apps/public` | App base URL |
 
 #### 3️⃣ Setup Database
 
-Set up a PostgreSQL database (e.g. [Supabase](https://supabase.com/)) and add your connection strings to `.env`.
-
 ```bash
-# Generate Prisma client from schema
-npx prisma generate
+# Generate the Prisma client
+npm run generate --workspace=packages/db
 
 # Push schema to the database
-npx prisma db push
+npm run db:push --workspace=packages/db
 ```
 
-#### 4️⃣ Start Development Server
+#### 4️⃣ Start Development
+
 ```bash
-npm run dev
+# Admin app (full features) — http://localhost:3000
+npm run dev:admin
+
+# Public app (read-only) — http://localhost:3001
+npm run dev:public
 ```
 
-#### 5️⃣ Access Application
-Navigate to [http://localhost:3000](http://localhost:3000)
+### Workspace Scripts
 
-### Troubleshooting Setup
+| Command | Description |
+|---|---|
+| `npm run dev:admin` | Start admin app dev server |
+| `npm run dev:public` | Start public app dev server |
+| `npm run build:admin` | Production build of admin app |
+| `npm run build:public` | Production build of public app |
+| `npm run generate --workspace=packages/db` | Regenerate Prisma client after schema changes |
+| `npm run db:push --workspace=packages/db` | Push schema changes to the database |
+| `npm run db:migrate --workspace=packages/db` | Run database migrations |
 
-**Issue: Prisma client errors**
+### Troubleshooting
+
+**Prisma client errors**
 ```bash
-npx prisma generate
+npm run generate --workspace=packages/db
 ```
 
-**Issue: Database out of sync**
+**Database out of sync**
 ```bash
-npx prisma migrate reset  # ⚠️ Deletes all data
+npm run db:push --workspace=packages/db
 ```
 
-**Issue: Port already in use**
+**Port already in use**
 ```bash
-# Edit .env and change PORT=3001
+# Edit apps/admin/.env or apps/public/.env and add:
+PORT=3001
 ```
 
 ## Usage Workflow
 
-### 1. Upload Address Data
+### 1. Upload Address Data *(admin app)*
 - Go to **Upload** page
 - Select a GeoJSON file with address features
 - Properties should include: `number`, `street`, `city`, `region`, `postcode`
 - **Recommended Source**: [OpenAddress.io](https://openaddress.io/) provides free, open address data in compatible formats
 - Upload and wait for processing
 
-### 2. Create Selection
+### 2. Create Selection *(admin app)*
 - Go to **Selections** page
 - Choose your uploaded source
 - Filter by city or other properties
-- Create named selection/campaign
+- Create a named selection/campaign
 
-### 3. Run Serviceability Checks
+### 3. Run Serviceability Checks *(admin app)*
 - Go to **Checker** page
 - Select your campaign
-- Choose check mode (Unchecked/Preorder/All)
-- Start checking
-- Monitor progress in real-time
+- Choose check mode (Unchecked / Preorder / All)
+- Start checking and monitor progress in real-time
 
-### 4. View Results on Map
+### 4. View Results *(admin or public app)*
 - Go to **Map** page
 - Select your campaign
 - Toggle filters to show/hide service types
 - Enable **Timeline Mode** to see service rollout history
   - Scrub through time using the slider
   - Play animation of service expansion
-  - Dates based on when Omni Fiber established service (API dates)
   - Track exactly when addresses became serviceable
 - Export filtered results as GeoJSON
+
+## Deploying the Public App to Vercel
+
+See [`apps/public/SETUP.md`](apps/public/SETUP.md) for full Vercel deployment instructions.
+
+Key points:
+- Set **Root Directory** to `apps/public` in Vercel project settings
+- Use the Supabase **transaction pooler** URL (port 6543) for `DATABASE_URL`
+- The `vercel.json` in `apps/public` handles ignored build steps for monorepo-aware deploys
 
 ## API Integration
 
@@ -216,88 +276,7 @@ Serviceability is determined by analyzing multiple fields:
 - **ServiceabilityCheck**: Check results (preserves history)
 - **BatchJob**: Batch checking jobs with progress
 
-## Project Structure
-
-```
-src/
-├── app/
-│   ├── actions/          # Server actions
-│   │   ├── dashboard.ts  # Dashboard stats
-│   │   ├── geojson.ts    # GeoJSON operations
-│   │   ├── map-timeline.ts # Map timeline data
-│   │   ├── selections.ts # Selection management
-│   │   └── stats.ts      # Navigation stats
-│   ├── api/              # API routes
-│   │   ├── batch-check/  # Batch checking
-│   │   ├── check-serviceability/ # Single check
-│   │   └── upload-geojson/ # File upload
-│   ├── checker/          # Checker page
-│   ├── map/              # Map view with timeline
-│   ├── selections/       # Selection management
-│   └── upload/           # File upload
-├── components/
-│   ├── ui/               # shadcn/ui components
-│   ├── navigation.tsx    # Main navigation
-│   └── service-map.tsx   # Leaflet map
-└── lib/
-    ├── batch-processor.ts # Batch logic
-    ├── db.ts             # Prisma client
-    ├── geojson-parser.ts # GeoJSON parsing
-    ├── omni-decoder.ts   # API decoder
-    └── utils.ts          # Utilities
-```
-
-## Configuration Files
-
-### Environment Variables
-- `.env.example` - Template with all required variables
-- `.env` - Your local environment (git-ignored, create from example)
-
-### Prisma
-- `prisma/schema.prisma` - Database schema definition
-- `prisma.config.ts` - Prisma configuration
-- `prisma/migrations/` - Database migration history
-
-## Development
-
-### Database Migrations
-```bash
-# Create migration after schema changes
-npx prisma migrate dev --name description
-
-# Reset database (⚠️ deletes all data)
-npx prisma migrate reset
-
-# Open Prisma Studio to view data
-npx prisma studio
-```
-
-### Build for Production
-```bash
-npm run build
-npm start
-```
-
-## Features in Detail
-
-### Timeline Mode
-- Automatically detects multiple check dates
-- Scrub through time with slider
-- Auto-animate with play button
-- See service expansion visually
-- Export data at specific points in time
-
-### Recheck Modes
-- **Unchecked**: Standard mode for new addresses
-- **Preorder**: Target addresses awaiting service
-- **All**: Full re-validation of entire selection
-
-### Map Timeline
-- Visualizes service rollout using Omni Fiber API dates
-- Shows when addresses were added and when they became serviceable
-- Animated playback through historical snapshots
-- Groups changes by day for easy tracking
-- Helps identify deployment patterns and expansion progress
+Schema lives in `packages/db/prisma/schema.prisma`.
 
 ## Contributing
 
@@ -313,7 +292,7 @@ Contributions are welcome! Here's how to get started:
 Please ensure:
 - Code follows existing style conventions
 - All TypeScript types are properly defined
-- Build passes (`npm run build`)
+- Both apps build cleanly (`npm run build:admin && npm run build:public`)
 - Features are tested in both light and dark modes
 
 ## License

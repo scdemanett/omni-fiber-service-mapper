@@ -1,0 +1,144 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Track uploaded GeoJSON source files
+model GeoJSONSource {
+  id           String    @id @default(uuid())
+  name         String
+  fileName     String
+  uploadedAt   DateTime  @default(now())
+  addressCount Int
+  addresses    Address[]
+
+  @@map("geojson_sources")
+}
+
+// Named address selections/campaigns
+model AddressSelection {
+  id             String    @id @default(uuid())
+  name           String
+  description    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  filterCriteria String // JSON string of filter criteria
+  addresses      Address[]
+
+  @@map("address_selections")
+}
+
+// Individual addresses from GeoJSON
+model Address {
+  id       String        @id @default(uuid())
+  sourceId String
+  source   GeoJSONSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  // GeoJSON geometry (stored as JSON)
+  longitude Float
+  latitude  Float
+
+  // Address properties from GeoJSON
+  number   String?
+  street   String?
+  unit     String?
+  city     String?
+  region   String?
+  postcode String?
+
+  // Formatted address string for API calls
+  addressString String
+
+  // Full GeoJSON properties as JSON
+  properties String // JSON string
+
+  // Many-to-many with selections
+  selections AddressSelection[]
+
+  // Serviceability checks for this address
+  checks ServiceabilityCheck[]
+
+  createdAt DateTime @default(now())
+
+  @@index([sourceId])
+  @@index([city])
+  @@index([postcode])
+  @@index([addressString])
+  @@map("addresses")
+}
+
+// Serviceability check results - track over time
+model ServiceabilityCheck {
+  id        String  @id @default(uuid())
+  addressId String
+  address   Address @relation(fields: [addressId], references: [id], onDelete: Cascade)
+
+  // Check metadata
+  checkedAt   DateTime  @default(now())
+  selectionId String? // Which campaign triggered this check
+  batchJobId  String? // Which batch run created this check
+  batchJob    BatchJob? @relation(fields: [batchJobId], references: [id], onDelete: SetNull)
+
+  // Serviceability results
+  serviceable        Boolean
+  serviceabilityType String  @default("none") // 'serviceable', 'preorder', 'none'
+  salesType          String?
+  status             String?
+  cstatus            String?
+  isPreSale          Int?
+  salesStatus        String?
+  matchType          String?
+
+  // API response timestamps
+  apiCreateDate DateTime?
+  apiUpdateDate DateTime?
+
+  // Error tracking
+  error String?
+
+  // Composite index for efficient "latest check per address" queries (DISTINCT ON / ORDER BY)
+  @@index([addressId, checkedAt(sort: Desc)])
+  @@index([batchJobId])
+  @@index([serviceabilityType])
+  @@index([checkedAt])
+  @@index([selectionId, checkedAt(sort: Desc)])
+  @@map("serviceability_checks")
+}
+
+// Track batch checking jobs
+model BatchJob {
+  id          String  @id @default(uuid())
+  selectionId String?
+  name        String
+  status      String // pending, running, paused, completed, failed
+  recheckType String  @default("unchecked") // unchecked, preorder, noservice, all
+
+  totalAddresses   Int
+  checkedCount     Int @default(0)
+  serviceableCount Int @default(0)
+  preorderCount    Int @default(0)
+  noServiceCount   Int @default(0)
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  lastCheckAt DateTime?
+
+  // Resume capability
+  currentIndex Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  checks ServiceabilityCheck[]
+
+  // Composite index for "find active job for selection" queries
+  @@index([selectionId, status])
+  @@map("batch_jobs")
+}
