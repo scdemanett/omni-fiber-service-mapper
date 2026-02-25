@@ -8,7 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@fsm/db": "*"
+    "@fsm/db": "^0.0.1"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
