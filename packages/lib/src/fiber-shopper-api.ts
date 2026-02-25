@@ -1,5 +1,5 @@
 import https from 'https';
-import { decodeResponse } from './omni-decoder';
+import { decodeResponse } from './fiber-decoder';
 
 const API_URL = 'https://shop.omnifiber.com/api/getCatalog';
 
@@ -11,7 +11,7 @@ const agent = new https.Agent({
 });
 
 /**
- * Fetch shopper data from Omni Fiber API.
+ * Fetch shopper data from the fiber service API.
  *
  * Returns `null` on network/transport failures.
  */
@@ -60,7 +60,7 @@ export async function fetchShopperData(address: string): Promise<unknown | null>
           const data = decodeResponse(rawBytes, contentEncoding);
           resolve(data);
         } catch (e) {
-          console.error(`Error decoding Omni response for ${address}:`, e);
+          console.error(`Error decoding response for ${address}:`, e);
           resolve(null);
         }
       });

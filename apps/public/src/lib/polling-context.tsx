@@ -1,1 +1,1 @@
-export { PollingProvider, usePolling } from '@omni/ui';
+export { PollingProvider, usePolling } from '@fsm/ui';

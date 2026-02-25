@@ -114,7 +114,7 @@ export default function Dashboard() {
           <div>
             <h1 className="text-4xl font-bold tracking-tight">Dashboard</h1>
             <p className="mt-2 text-lg text-muted-foreground">
-              Track and manage Omni Fiber serviceability data
+              Track and manage fiber serviceability data
             </p>
           </div>
           <div className="flex items-center gap-4">

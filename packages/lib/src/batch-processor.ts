@@ -5,8 +5,8 @@
  * to the database level instead of loading rows into memory.
  */
 
-import { prisma } from '@omni/db';
-import type { ServiceabilityResult } from './omni-decoder';
+import { prisma } from '@fsm/db';
+import type { ServiceabilityResult } from './fiber-decoder';
 
 export interface BatchProgress {
   id: string;

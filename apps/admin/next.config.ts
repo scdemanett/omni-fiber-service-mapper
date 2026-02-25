@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ['@omni/db', '@omni/lib', '@omni/ui'],
+  transpilePackages: ['@fsm/db', '@fsm/lib', '@fsm/ui'],
   experimental: {
     serverActions: {
       bodySizeLimit: '50mb',

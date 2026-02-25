@@ -1,1 +1,1 @@
-export { SelectionProvider, useSelection } from '@omni/ui';
+export { SelectionProvider, useSelection } from '@fsm/ui';

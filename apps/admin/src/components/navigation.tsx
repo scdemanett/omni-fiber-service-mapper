@@ -127,10 +127,10 @@ export function Navigation() {
               </div>
               <div className="flex flex-col">
                 <span className="text-sm font-semibold tracking-tight">
-                  Omni Fiber
+                  Fiber Service
                 </span>
                 <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-                  Service Mapper
+                  Mapper
                 </span>
               </div>
             </Link>

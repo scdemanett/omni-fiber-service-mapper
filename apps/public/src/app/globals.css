@@ -52,14 +52,14 @@
 
 :root {
   --radius: 0.5rem;
-  /* Omni Fiber Purple - Light Theme */
+  /* Fiber Service Purple - Light Theme */
   --background: oklch(0.98 0.005 290);
   --foreground: oklch(0.15 0.02 290);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.15 0.02 290);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.15 0.02 290);
-  --primary: oklch(0.48 0.28 290); /* Omni Fiber Purple #6b00e4 */
+  --primary: oklch(0.48 0.28 290); /* Fiber Service Purple #6b00e4 */
   --primary-foreground: oklch(0.99 0 0);
   --secondary: oklch(0.95 0.02 290);
   --secondary-foreground: oklch(0.25 0.02 290);
@@ -73,7 +73,7 @@
   --ring: oklch(0.48 0.28 290);
   
   /* Chart colors - purple spectrum */
-  --chart-1: oklch(0.55 0.25 290); /* Omni Fiber Purple */
+  --chart-1: oklch(0.55 0.25 290); /* Fiber Service Purple */
   --chart-2: oklch(0.60 0.20 270); /* Blue-Purple */
   --chart-3: oklch(0.65 0.22 310); /* Magenta-Purple */
   --chart-4: oklch(0.60 0.20 250); /* Blue */
@@ -98,14 +98,14 @@
 }
 
 .dark {
-  /* Omni Fiber Purple - Dark Theme */
+  /* Fiber Service Purple - Dark Theme */
   --background: oklch(0.12 0.03 290);
   --foreground: oklch(0.95 0.01 290);
   --card: oklch(0.15 0.03 290);
   --card-foreground: oklch(0.95 0.01 290);
   --popover: oklch(0.15 0.03 290);
   --popover-foreground: oklch(0.95 0.01 290);
-  --primary: oklch(0.65 0.25 290); /* Bright Omni Fiber Purple */
+  --primary: oklch(0.65 0.25 290); /* Bright Fiber Service Purple */
   --primary-foreground: oklch(0.99 0 0);
   --secondary: oklch(0.22 0.03 290);
   --secondary-foreground: oklch(0.95 0.01 290);

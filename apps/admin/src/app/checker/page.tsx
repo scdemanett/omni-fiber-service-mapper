@@ -438,7 +438,7 @@ function CheckerContent() {
       <div className="mb-8">
         <h1 className="text-4xl font-bold tracking-tight">Serviceability Checker</h1>
         <p className="mt-2 text-lg text-muted-foreground">
-          Run batch serviceability checks against the Omni Fiber API
+          Run batch serviceability checks against the fiber service API
         </p>
       </div>
 

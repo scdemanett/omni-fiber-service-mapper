@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isServiceable, type ShopperResponse } from '@/lib/omni-decoder';
-import { fetchShopperData } from '@/lib/omni-shopper-api';
+import { isServiceable, type ShopperResponse } from '@/lib/fiber-decoder';
+import { fetchShopperData } from '@/lib/fiber-shopper-api';
 
 /**
  * POST /api/check-serviceability
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Address is required' }, { status: 400 });
     }
 
-    // Fetch from Omni Fiber API
+    // Fetch from fiber service API
     const shopperData = await fetchShopperData(address);
 
     if (!shopperData) {

@@ -1,1 +1,1 @@
-export { prisma, default } from '@omni/db';
+export { prisma, default } from '@fsm/db';

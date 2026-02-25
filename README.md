@@ -1,6 +1,6 @@
-# Omni Fiber Service Mapper
+# Fiber Service Mapper
 
-A monorepo for tracking and visualizing Omni Fiber internet service availability across addresses. Features batch serviceability checking, interactive mapping with timeline playback, and a public-facing read-only dashboard deployable to Vercel.
+A monorepo for tracking and visualizing fiber internet service availability across addresses. Features batch serviceability checking, interactive mapping with timeline playback, and a public-facing read-only dashboard deployable to Vercel.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
@@ -11,7 +11,7 @@ A monorepo for tracking and visualizing Omni Fiber internet service availability
 ```bash
 # Clone and install all workspaces
 git clone <your-repo-url>
-cd omni-fiber-service-mapper
+cd fiber-service-mapper
 npm install
 
 # Setup environment files
@@ -52,7 +52,7 @@ npm run dev:public
 ## Repository Structure
 
 ```
-omni-fiber-service-mapper/
+fiber-service-mapper/
 ├── apps/
 │   ├── admin/          # Full-featured local app (upload, checker, map, dashboard)
 │   └── public/         # Read-only public site (dashboard + map) — deploys to Vercel
@@ -72,7 +72,7 @@ A read-only public-facing site showing the dashboard and interactive map. Reads 
 Single source of truth for the Prisma schema and client. Both apps import the Prisma client from here. Also contains `prisma.config.ts` for CLI migrations.
 
 ### packages/lib
-Pure TypeScript utilities shared across both apps: Omni Fiber API decoder, batch processing logic, GeoJSON parser, and general utilities.
+Pure TypeScript utilities shared across both apps: fiber service API decoder, batch processing logic, GeoJSON parser, and general utilities.
 
 ### packages/ui
 Shared React components: `PollingProvider`, `SelectionProvider` context, and the Leaflet `ServiceMap` component.
@@ -83,7 +83,7 @@ Shared React components: `PollingProvider`, `SelectionProvider` context, and the
 - Color-coded markers for service status (Available, Preorder, No Service)
 - Real-time updates during batch checking
 - **Timeline mode** to visualize service expansion over time
-  - Based on Omni Fiber API dates (when service was established)
+  - Based on API dates (when service was established)
   - Animated playback of service rollout progression
   - Scrub through historical snapshots
   - See exactly when addresses became serviceable
@@ -120,7 +120,7 @@ Shared React components: `PollingProvider`, `SelectionProvider` context, and the
 - **Database**: PostgreSQL (Supabase) with Prisma ORM
 - **UI**: React, Tailwind CSS, shadcn/ui
 - **Maps**: Leaflet.js
-- **API Integration**: Omni Fiber getCatalog API with custom decoder
+- **API Integration**: Fiber service getCatalog API with custom decoder
 - **Monorepo**: npm workspaces
 
 ## Getting Started
@@ -137,7 +137,7 @@ Shared React components: `PollingProvider`, `SelectionProvider` context, and the
 
 ```bash
 git clone <your-repo-url>
-cd omni-fiber-service-mapper
+cd fiber-service-mapper
 npm install
 ```
 
@@ -253,7 +253,7 @@ Key points:
 
 ## API Integration
 
-The application decodes Omni Fiber's API responses through multiple layers:
+The application decodes the fiber service API responses through multiple layers:
 1. Brotli decompression
 2. ROT13 cipher
 3. Custom UUdecode
@@ -320,4 +320,4 @@ For issues, questions, or feature requests:
 
 ---
 
-**Note**: This is an unofficial tool for analyzing Omni Fiber service availability. Not affiliated with or endorsed by Omni Fiber.
+**Note**: This is an unofficial tool for analyzing fiber internet service availability. Not affiliated with or endorsed by any ISP.

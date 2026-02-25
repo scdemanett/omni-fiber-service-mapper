@@ -1,4 +1,4 @@
-﻿# Contributing to Omni Fiber Service Mapper
+# Contributing to Fiber Service Mapper
 
 Thank you for your interest in contributing! This document provides guidelines and information for contributors.
 
@@ -8,8 +8,8 @@ Thank you for your interest in contributing! This document provides guidelines a
 2. **Clone your fork** locally:
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/omni-fiber-service-mapper.git
-cd omni-fiber-service-mapper
+git clone https://github.com/YOUR-USERNAME/fiber-service-mapper.git
+cd fiber-service-mapper
 ```
 
 3. **Set up the development environment** (see README.md)

@@ -1,5 +1,5 @@
 /**
- * Omni Fiber API Response Decoder
+ * Fiber Service API Response Decoder
  * Handles: Brotli → ROT13 → Custom UUdecode → JSON
  */
 
@@ -355,7 +355,7 @@ export function isServiceable(shopperResponse: ShopperResponse): ServiceabilityR
     // serviceable boolean is true only for immediate service
     const serviceable = serviceabilityType === 'serviceable';
 
-    // Extract date fields from matchedAddress (when service was established in Omni's system)
+    // Extract date fields from matchedAddress (when service was established in the provider's system)
     const apiCreateDate = matchedAddress.createDate;
     const apiUpdateDate = matchedAddress.updateDate;
 

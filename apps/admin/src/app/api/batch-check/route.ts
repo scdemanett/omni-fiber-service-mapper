@@ -8,11 +8,11 @@ import {
   getAddressesByServiceabilityType,
   getAddressesWithErrors,
 } from '@/lib/batch-processor';
-import { isServiceable, type ShopperResponse } from '@/lib/omni-decoder';
-import { fetchShopperData } from '@/lib/omni-shopper-api';
+import { isServiceable, type ShopperResponse } from '@/lib/fiber-decoder';
+import { fetchShopperData } from '@/lib/fiber-shopper-api';
 
 const DELAY_MS = Number(process.env.BATCH_DELAY_MS ?? 250); // minimum spacing between request STARTs
-const MAX_IN_FLIGHT = Number(process.env.BATCH_MAX_IN_FLIGHT ?? 10); // cap concurrent Omni requests
+const MAX_IN_FLIGHT = Number(process.env.BATCH_MAX_IN_FLIGHT ?? 10); // cap concurrent API requests
 const STATUS_POLL_MS = Number(process.env.BATCH_STATUS_POLL_MS ?? 1000);
 
 function sleep(ms: number) {
@@ -322,7 +322,7 @@ async function processBatch(jobId: string, selectionId: string) {
 
   console.log(`Found ${addresses.length} addresses to check (mode: ${recheckType})`);
 
-  // Rate-limited scheduler: start a new Omni request every DELAY_MS (start-to-start),
+  // Rate-limited scheduler: start a new API request every DELAY_MS (start-to-start),
   // while allowing a small amount of concurrency so long requests don't stall throughput.
   const inFlight = new Set<Promise<void>>();
   let lastStartAt = 0;

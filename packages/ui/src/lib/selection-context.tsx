@@ -11,7 +11,7 @@ interface SelectionContextType {
 
 const SelectionContext = createContext<SelectionContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'omni-fiber-selections';
+const STORAGE_KEY = 'fiber-service-selections';
 
 interface StoredSelections {
   selectedCampaignId: string | null;

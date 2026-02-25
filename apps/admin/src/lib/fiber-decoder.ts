@@ -3,9 +3,9 @@ export {
   customUudecode,
   decodeResponse,
   isServiceable,
-} from '@omni/lib';
+} from '@fsm/lib';
 export type {
   ShopperResponse,
   ServiceabilityType,
   ServiceabilityResult,
-} from '@omni/lib';
+} from '@fsm/lib';

@@ -1,1 +1,1 @@
-export { default } from '@omni/ui/components/service-map';
+export { default } from '@fsm/ui/components/service-map';

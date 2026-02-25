@@ -103,7 +103,7 @@ export default function Dashboard() {
           <div>
             <h1 className="text-4xl font-bold tracking-tight">Service Coverage</h1>
             <p className="mt-2 text-lg text-muted-foreground">
-              Omni Fiber availability across tracked addresses
+              Fiber service availability across tracked addresses
             </p>
           </div>
           <div className="flex items-center gap-4">
@@ -113,12 +113,6 @@ export default function Dashboard() {
                 Live updating
               </Badge>
             )}
-            <Button asChild variant="outline">
-              <Link href="/map">
-                <Map className="mr-2 h-4 w-4" />
-                View Map
-              </Link>
-            </Button>
           </div>
         </div>
 

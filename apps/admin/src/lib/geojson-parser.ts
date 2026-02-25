@@ -6,9 +6,9 @@ export {
   getUniquePropertyValues,
   filterFeatures,
   validateGeoJSON,
-} from '@omni/lib';
+} from '@fsm/lib';
 export type {
   GeoJSONFeature,
   GeoJSONFeatureCollection,
   ParsedAddress,
-} from '@omni/lib';
+} from '@fsm/lib';

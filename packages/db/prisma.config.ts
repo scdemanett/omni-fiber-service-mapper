@@ -11,6 +11,6 @@ export default defineConfig({
   datasource: {
     // Used by Prisma CLI for migrations and schema push.
     // For Supabase, use the direct connection (port 5432).
-    url: process.env.DIRECT_URL ?? process.env.DATABASE_URL ?? "postgresql://localhost:5432/omni_fiber_mapper",
+    url: process.env.DIRECT_URL ?? process.env.DATABASE_URL ?? "postgresql://localhost:5432/fiber_service_mapper",
   },
 });

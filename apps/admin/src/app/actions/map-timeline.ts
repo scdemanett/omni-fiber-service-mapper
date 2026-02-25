@@ -47,7 +47,7 @@ export async function getCheckTimeline(selectionId: string): Promise<Date[]> {
 
 /**
  * Get addresses with their status at a specific point in time.
- * Filters by when Omni Fiber changed service status (API updateDate), not when we checked.
+ * Filters by when the fiber service changed service status (API updateDate), not when we checked.
  *
  * Uses a PostgreSQL LATERAL JOIN so only the relevant check per address is fetched,
  * instead of loading all addresses with all their checks into memory.

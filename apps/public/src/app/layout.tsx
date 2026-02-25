@@ -20,10 +20,10 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Omni Fiber Service Map",
-  description: "Check Omni Fiber internet service availability in your area",
+  title: "Fiber Service Map",
+  description: "Check fiber internet service availability in your area",
   appleWebApp: {
-    title: 'Omni Fiber Service Map',
+    title: 'Fiber Service Map',
     statusBarStyle: 'black-translucent',
   },
 };

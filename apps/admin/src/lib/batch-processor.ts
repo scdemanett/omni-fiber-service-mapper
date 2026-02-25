@@ -9,5 +9,5 @@ export {
   getAddressesWithErrors,
   getAllBatchJobs,
   getAddressesForBatchJob,
-} from '@omni/lib';
-export type { BatchProgress, AddressToCheck } from '@omni/lib';
+} from '@fsm/lib';
+export type { BatchProgress, AddressToCheck } from '@fsm/lib';

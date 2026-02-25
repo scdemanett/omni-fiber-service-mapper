@@ -20,12 +20,12 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@omni/db": ["../../packages/db/src/index.ts"],
-      "@omni/db/*": ["../../packages/db/src/*"],
-      "@omni/lib": ["../../packages/lib/src/index.ts"],
-      "@omni/lib/*": ["../../packages/lib/src/*"],
-      "@omni/ui": ["../../packages/ui/src/index.ts"],
-      "@omni/ui/*": ["../../packages/ui/src/*"]
+      "@fsm/db": ["../../packages/db/src/index.ts"],
+      "@fsm/db/*": ["../../packages/db/src/*"],
+      "@fsm/lib": ["../../packages/lib/src/index.ts"],
+      "@fsm/lib/*": ["../../packages/lib/src/*"],
+      "@fsm/ui": ["../../packages/ui/src/index.ts"],
+      "@fsm/ui/*": ["../../packages/ui/src/*"]
     }
   },
   "include": [
