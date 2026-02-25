@@ -19,7 +19,7 @@ cp packages/db/.env.example packages/db/.env
 cp apps/admin/.env.example apps/admin/.env
 # Edit both .env files with your database credentials
 
-# Push schema to the database
+# Push schema to the database (also applies expression indexes automatically)
 npm run db:push --workspace=packages/db
 
 # Start the admin app (full functionality)
@@ -164,10 +164,7 @@ Edit both `.env` files with your Supabase connection strings:
 #### 3️⃣ Setup Database
 
 ```bash
-# Generate the Prisma client
-npm run generate --workspace=packages/db
-
-# Push schema to the database
+# Push schema to the database and apply all indexes (also generates the Prisma client)
 npm run db:push --workspace=packages/db
 ```
 
@@ -190,7 +187,7 @@ npm run dev:public
 | `npm run build:admin` | Production build of admin app |
 | `npm run build:public` | Production build of public app |
 | `npm run generate --workspace=packages/db` | Regenerate Prisma client after schema changes |
-| `npm run db:push --workspace=packages/db` | Push schema changes to the database |
+| `npm run db:push --workspace=packages/db` | Push schema changes to the database and apply expression indexes |
 | `npm run db:migrate --workspace=packages/db` | Run database migrations |
 
 ### Troubleshooting

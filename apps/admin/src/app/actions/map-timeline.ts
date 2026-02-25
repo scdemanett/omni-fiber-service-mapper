@@ -22,6 +22,8 @@ export interface AddressAtTime {
   status: string | null;
   cstatus: string | null;
   checkedAt: Date | null;
+  apiCreateDate: Date | null;
+  apiUpdateDate: Date | null;
 }
 
 /**
@@ -79,6 +81,8 @@ export async function getAddressesAtTime(
         sc."salesType",
         sc.status,
         sc.cstatus,
+        sc."apiCreateDate",
+        sc."apiUpdateDate",
         COALESCE(sc."apiUpdateDate", sc."apiCreateDate", sc."checkedAt") as "effectiveDate"
       FROM serviceability_checks sc
       WHERE sc."addressId" = a.id
@@ -90,6 +94,52 @@ export async function getAddressesAtTime(
   `;
 
   return addresses;
+}
+
+/**
+ * Get all addresses for a selection with their current (latest) serviceability status.
+ * Fetches only the fields needed for map rendering — excludes the large `properties`
+ * JSON blob and all other unused address columns that Prisma would otherwise load.
+ *
+ * Uses a LATERAL JOIN so each address gets exactly one check row from the DB,
+ * with no data serialised or transferred that the map doesn't display.
+ */
+export async function getAddressesForMap(selectionId: string): Promise<AddressAtTime[]> {
+  return prisma.$queryRaw<AddressAtTime[]>`
+    SELECT
+      a.id,
+      a.longitude,
+      a.latitude,
+      a."addressString",
+      a.city,
+      lc."serviceabilityType",
+      lc.serviceable,
+      lc."salesType",
+      lc.status,
+      lc.cstatus,
+      lc."checkedAt",
+      lc."apiCreateDate",
+      lc."apiUpdateDate"
+    FROM addresses a
+    INNER JOIN "_AddressToAddressSelection" atas
+      ON a.id = atas."A" AND atas."B" = ${selectionId}
+    LEFT JOIN LATERAL (
+      SELECT
+        sc."serviceabilityType",
+        sc.serviceable,
+        sc."salesType",
+        sc.status,
+        sc.cstatus,
+        sc."checkedAt",
+        sc."apiCreateDate",
+        sc."apiUpdateDate"
+      FROM serviceability_checks sc
+      WHERE sc."addressId" = a.id
+        AND (sc.error IS NULL OR sc.error = '')
+      ORDER BY sc."checkedAt" DESC
+      LIMIT 1
+    ) lc ON true
+  `;
 }
 
 export interface RunSummary {

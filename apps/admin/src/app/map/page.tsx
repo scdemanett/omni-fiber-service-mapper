@@ -19,8 +19,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
-import { getSelections, getSelectionAddresses } from '@/app/actions/selections';
-import { getCheckTimeline, getAddressesAtTime, type AddressAtTime } from '@/app/actions/map-timeline';
+import { getSelections } from '@/app/actions/selections';
+import { getCheckTimeline, getAddressesAtTime, getAddressesForMap } from '@/app/actions/map-timeline';
 import { format } from 'date-fns';
 import { usePolling } from '@/lib/polling-context';
 import { useSelection } from '@/lib/selection-context';
@@ -94,6 +94,9 @@ function MapContent() {
   const [isLoadingAddresses, setIsLoadingAddresses] = useState(false);
   const [activeJob, setActiveJob] = useState<BatchJob | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const pollCountRef = useRef(0);
+  const snapshotCacheRef = useRef<Map<string, AddressWithCheck[]>>(new Map());
+  const timelineDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Timeline state - local only (no URL or context syncing)
   const [timelineEnabled, setTimelineEnabled] = useState(false);
@@ -164,9 +167,25 @@ function MapContent() {
 
   const loadAddresses = useCallback(async (selectionId: string) => {
     try {
-      // Load all addresses - clustering handles performance regardless of count
-      const result = await getSelectionAddresses(selectionId, 1, Number.MAX_SAFE_INTEGER);
-      setAddresses(result.addresses as unknown as AddressWithCheck[]);
+      const data = await getAddressesForMap(selectionId);
+      const converted = data.map((addr) => ({
+        id: addr.id,
+        longitude: addr.longitude,
+        latitude: addr.latitude,
+        addressString: addr.addressString,
+        city: addr.city,
+        checks: addr.checkedAt ? [{
+          serviceable: addr.serviceable ?? false,
+          serviceabilityType: addr.serviceabilityType ?? 'none',
+          salesType: addr.salesType,
+          status: addr.status,
+          cstatus: addr.cstatus,
+          checkedAt: addr.checkedAt,
+          apiCreateDate: addr.apiCreateDate ?? null,
+          apiUpdateDate: addr.apiUpdateDate ?? null,
+        }] : [],
+      })) as AddressWithCheck[];
+      setAddresses(converted);
     } catch (error) {
       console.error('Error loading addresses:', error);
     }
@@ -194,10 +213,16 @@ function MapContent() {
   }, []);
 
   const loadAddressesAtTime = useCallback(async (selectionId: string, date: Date) => {
+    const cacheKey = `${selectionId}:${date.toISOString()}`;
+    const cached = snapshotCacheRef.current.get(cacheKey);
+    if (cached) {
+      setAddresses(cached);
+      return;
+    }
+
     setIsLoadingTimelineData(true);
     try {
       const addressesAtTime = await getAddressesAtTime(selectionId, date);
-      // Convert to AddressWithCheck format
       const converted = addressesAtTime.map((addr) => ({
         id: addr.id,
         longitude: addr.longitude,
@@ -211,9 +236,12 @@ function MapContent() {
           status: addr.status,
           cstatus: addr.cstatus,
           checkedAt: addr.checkedAt,
+          apiCreateDate: addr.apiCreateDate ?? null,
+          apiUpdateDate: addr.apiUpdateDate ?? null,
         }] : [],
-      }));
-      setAddresses(converted as unknown as AddressWithCheck[]);
+      })) as AddressWithCheck[];
+      snapshotCacheRef.current.set(cacheKey, converted);
+      setAddresses(converted);
     } catch (error) {
       console.error('Error loading addresses at time:', error);
     } finally {
@@ -297,12 +325,16 @@ function MapContent() {
       return;
     }
 
+    snapshotCacheRef.current.clear();
+
     const init = async () => {
       setIsLoadingAddresses(true);
       try {
-        await loadAddresses(selectedSelectionId);
-        await checkForActiveJob(selectedSelectionId);
-        await loadTimeline(selectedSelectionId);
+        await Promise.all([
+          loadAddresses(selectedSelectionId),
+          checkForActiveJob(selectedSelectionId),
+          loadTimeline(selectedSelectionId),
+        ]);
       } finally {
         setIsLoadingAddresses(false);
       }
@@ -311,51 +343,61 @@ function MapContent() {
     init();
   }, [selectedSelectionId, loadAddresses, checkForActiveJob, loadTimeline]);
 
-  // Load addresses at selected time when timeline is enabled
+  // Load addresses at selected time when timeline is enabled (debounced to avoid per-tick DB queries)
   useEffect(() => {
     if (timelineEnabled && selectedSelectionId && timelineDates.length > 0) {
       const selectedDate = timelineDates[selectedTimeIndex];
-      if (selectedDate) {
+      if (!selectedDate) return;
+
+      if (timelineDebounceRef.current) clearTimeout(timelineDebounceRef.current);
+      timelineDebounceRef.current = setTimeout(() => {
         loadAddressesAtTime(selectedSelectionId, selectedDate);
-      }
+      }, 300);
+
+      return () => {
+        if (timelineDebounceRef.current) clearTimeout(timelineDebounceRef.current);
+      };
     } else if (!timelineEnabled && selectedSelectionId) {
-      // Load current addresses when timeline is disabled
       loadAddresses(selectedSelectionId);
     }
   }, [timelineEnabled, selectedTimeIndex, timelineDates, selectedSelectionId, loadAddressesAtTime, loadAddresses]);
 
-  // Poll for updates when there's an active job and polling is enabled
+  // Poll for updates when there's an active job and polling is enabled.
+  // Job status is checked every 3s (lightweight). Address pins are refreshed every 15s
+  // (every 5th tick) to reduce DB load while still showing progress during a run.
   useEffect(() => {
     if (activeJob && selectedSelectionId && pollingEnabled && !timelineEnabled) {
       let cancelled = false;
+      pollCountRef.current = 0;
+
       const poll = async () => {
         try {
-          // Refresh addresses (only when NOT in timeline mode)
-          await loadAddresses(selectedSelectionId);
-          // Check if job is still active
+          pollCountRef.current += 1;
           const job = await checkForActiveJob(selectedSelectionId);
           if (cancelled) return;
+
           if (!job) {
-            // Job finished, stop polling
-            if (pollingRef.current) {
-              clearTimeout(pollingRef.current);
-              pollingRef.current = null;
-            }
-            loadSelections(); // Refresh selection stats
-            loadTimeline(selectedSelectionId); // Refresh timeline data
-          } else {
-            // Schedule next poll only if job is still active
-            pollingRef.current = setTimeout(poll, 3000);
+            // Job finished — do one final address refresh then stop polling
+            await loadAddresses(selectedSelectionId);
+            loadSelections();
+            loadTimeline(selectedSelectionId);
+            return;
           }
+
+          // Refresh address pins every 5 polls (~15 s) to keep the map up to date
+          // without hammering the DB on every tick
+          if (pollCountRef.current % 5 === 0) {
+            await loadAddresses(selectedSelectionId);
+          }
+
+          pollingRef.current = setTimeout(poll, 3000);
         } catch (error) {
           if (cancelled) return;
           console.error('Error polling map updates:', error);
-          // Continue polling even on error
           pollingRef.current = setTimeout(poll, 3000);
         }
       };
 
-      // Start polling
       poll();
 
       return () => {
@@ -366,7 +408,6 @@ function MapContent() {
         }
       };
     } else if (pollingRef.current) {
-      // Clear polling if it's disabled or timeline is enabled
       clearTimeout(pollingRef.current);
       pollingRef.current = null;
     }
