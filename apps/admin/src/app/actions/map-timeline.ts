@@ -16,11 +16,16 @@ export interface AddressAtTime {
   latitude: number;
   addressString: string;
   city: string | null;
+  postcode: string | null;
+  region: string | null;
   serviceabilityType: string | null;
   serviceable: boolean | null;
   salesType: string | null;
   status: string | null;
   cstatus: string | null;
+  isPreSale: number | null;
+  salesStatus: string | null;
+  matchType: string | null;
   checkedAt: Date | null;
   apiCreateDate: Date | null;
   apiUpdateDate: Date | null;
@@ -65,12 +70,19 @@ export async function getAddressesAtTime(
       a.latitude,
       a."addressString",
       a.city,
+      a.postcode,
+      a.region,
       lc."serviceabilityType",
       lc.serviceable,
       lc."salesType",
       lc.status,
       lc.cstatus,
-      lc."effectiveDate" as "checkedAt"
+      lc."isPreSale",
+      lc."salesStatus",
+      lc."matchType",
+      lc."effectiveDate" as "checkedAt",
+      lc."apiCreateDate",
+      lc."apiUpdateDate"
     FROM addresses a
     INNER JOIN "_AddressToAddressSelection" atas
       ON a.id = atas."A" AND atas."B" = ${selectionId}
@@ -81,6 +93,9 @@ export async function getAddressesAtTime(
         sc."salesType",
         sc.status,
         sc.cstatus,
+        sc."isPreSale",
+        sc."salesStatus",
+        sc."matchType",
         sc."apiCreateDate",
         sc."apiUpdateDate",
         COALESCE(sc."apiUpdateDate", sc."apiCreateDate", sc."checkedAt") as "effectiveDate"
@@ -112,11 +127,16 @@ export async function getAddressesForMap(selectionId: string): Promise<AddressAt
       a.latitude,
       a."addressString",
       a.city,
+      a.postcode,
+      a.region,
       lc."serviceabilityType",
       lc.serviceable,
       lc."salesType",
       lc.status,
       lc.cstatus,
+      lc."isPreSale",
+      lc."salesStatus",
+      lc."matchType",
       lc."checkedAt",
       lc."apiCreateDate",
       lc."apiUpdateDate"
@@ -130,6 +150,9 @@ export async function getAddressesForMap(selectionId: string): Promise<AddressAt
         sc."salesType",
         sc.status,
         sc.cstatus,
+        sc."isPreSale",
+        sc."salesStatus",
+        sc."matchType",
         sc."checkedAt",
         sc."apiCreateDate",
         sc."apiUpdateDate"

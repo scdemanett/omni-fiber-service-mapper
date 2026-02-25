@@ -56,12 +56,17 @@ interface AddressWithCheck {
   latitude: number;
   addressString: string;
   city: string | null;
+  postcode: string | null;
+  region: string | null;
   checks: {
     serviceable: boolean;
     serviceabilityType: string;
     salesType: string | null;
     status: string | null;
     cstatus: string | null;
+    isPreSale: number | null;
+    salesStatus: string | null;
+    matchType: string | null;
     checkedAt: Date;
     apiCreateDate: Date | null;
     apiUpdateDate: Date | null;
@@ -174,12 +179,17 @@ function MapContent() {
         latitude: addr.latitude,
         addressString: addr.addressString,
         city: addr.city,
+        postcode: addr.postcode ?? null,
+        region: addr.region ?? null,
         checks: addr.checkedAt ? [{
           serviceable: addr.serviceable ?? false,
           serviceabilityType: addr.serviceabilityType ?? 'none',
           salesType: addr.salesType,
           status: addr.status,
           cstatus: addr.cstatus,
+          isPreSale: addr.isPreSale ?? null,
+          salesStatus: addr.salesStatus ?? null,
+          matchType: addr.matchType ?? null,
           checkedAt: addr.checkedAt,
           apiCreateDate: addr.apiCreateDate ?? null,
           apiUpdateDate: addr.apiUpdateDate ?? null,
@@ -229,12 +239,17 @@ function MapContent() {
         latitude: addr.latitude,
         addressString: addr.addressString,
         city: addr.city,
+        postcode: addr.postcode ?? null,
+        region: addr.region ?? null,
         checks: addr.checkedAt ? [{
           serviceable: addr.serviceable ?? false,
           serviceabilityType: addr.serviceabilityType ?? 'none',
           salesType: addr.salesType,
           status: addr.status,
           cstatus: addr.cstatus,
+          isPreSale: addr.isPreSale ?? null,
+          salesStatus: addr.salesStatus ?? null,
+          matchType: addr.matchType ?? null,
           checkedAt: addr.checkedAt,
           apiCreateDate: addr.apiCreateDate ?? null,
           apiUpdateDate: addr.apiUpdateDate ?? null,
@@ -469,12 +484,19 @@ function MapContent() {
       properties: {
         address: addr.addressString,
         city: addr.city,
+        postcode: addr.postcode,
+        region: addr.region,
         serviceable: addr.checks[0]?.serviceable ?? null,
         serviceabilityType: addr.checks[0]?.serviceabilityType ?? null,
         salesType: addr.checks[0]?.salesType ?? null,
         status: addr.checks[0]?.status ?? null,
         cstatus: addr.checks[0]?.cstatus ?? null,
+        isPreSale: addr.checks[0]?.isPreSale ?? null,
+        salesStatus: addr.checks[0]?.salesStatus ?? null,
+        matchType: addr.checks[0]?.matchType ?? null,
         checkedAt: addr.checks[0]?.checkedAt ?? null,
+        apiCreateDate: addr.checks[0]?.apiCreateDate ?? null,
+        apiUpdateDate: addr.checks[0]?.apiUpdateDate ?? null,
       },
     }));
 
