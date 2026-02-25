@@ -1,5 +1,5 @@
 {
-  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- apps/public packages/",
+  "ignoreCommand": "[ $(git rev-list --count HEAD) -gt 1 ] && git diff HEAD^ HEAD --quiet -- apps/public packages/ || exit 1",
   "buildCommand": "cd ../.. && npm run build:public",
   "installCommand": "cd ../.. && npm install"
 }
