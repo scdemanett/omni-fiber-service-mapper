@@ -1,5 +1,5 @@
 {
   "ignoreCommand": "[ -z \"$VERCEL_GIT_PREVIOUS_SHA\" ] && exit 1; git diff --quiet $VERCEL_GIT_PREVIOUS_SHA HEAD -- apps/public packages/ || exit 1",
   "buildCommand": "cd ../.. && npm run build:public",
-  "installCommand": "cd ../.. && npm install"
+  "installCommand": "cd ../.. && npm install --include=dev"
 }
