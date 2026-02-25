@@ -58,7 +58,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       prisma.serviceabilityCheck.count(),
       prisma.batchJob.findMany({
         orderBy: { createdAt: 'desc' },
-        take: 5,
+        take: 4,
       }),
     ]);
 

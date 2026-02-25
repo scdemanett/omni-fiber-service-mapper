@@ -234,7 +234,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="space-y-4">
-                {stats.selections.slice(0, 5).map((selection) => {
+                {stats.selections.slice(0, 4).map((selection) => {
                   const progress =
                     selection._count.addresses > 0
                       ? (selection.checkedCount / selection._count.addresses) * 100
