@@ -27,6 +27,7 @@ interface AddressWithCheck {
 
 interface ServiceMapProps {
   addresses: AddressWithCheck[];
+  referralUrl?: string;
   clusteringOptions?: {
     maxClusterRadius?: number; // Max radius a cluster will cover (default: 80)
     disableClusteringAtZoom?: number; // Disable clustering at this zoom level (default: 18)
@@ -52,7 +53,7 @@ function FitBounds({ addresses }: { addresses: AddressWithCheck[] }) {
   return null;
 }
 
-export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapProps) {
+export default function ServiceMap({ addresses, referralUrl, clusteringOptions }: ServiceMapProps) {
   const mapRef = useRef(null);
 
   // Clustering configuration with defaults
@@ -144,9 +145,9 @@ export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapP
             }}
           >
             <Popup>
-              <div className="min-w-[200px] space-y-2">
-                <div className="font-semibold">{addr.addressString}</div>
-                <div className="rounded bg-gray-100 px-2 py-1 text-sm text-gray-600">
+              <div className="popup-content">
+                <div className="popup-title">{addr.addressString}</div>
+                <div className="popup-badge popup-badge-gray">
                   Not checked yet
                 </div>
               </div>
@@ -180,32 +181,32 @@ export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapP
             }}
           >
             <Popup>
-              <div className="min-w-[200px] space-y-2">
-                <div className="font-semibold">{addr.addressString}</div>
-                <div className="rounded bg-red-100 px-2 py-1 text-sm text-red-800">
+              <div className="popup-content">
+                <div className="popup-title">{addr.addressString}</div>
+                <div className="popup-badge popup-badge-red">
                   ❌ No Service Available
                 </div>
                 <a 
                   href="https://www.omnifiber.com/future-service/" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="block text-center text-sm text-blue-600 hover:text-blue-800 underline"
+                  className="popup-link"
                 >
                   Request Future Service
                 </a>
                 {addr.checks[0] && (
-                  <div className="space-y-0.5">
+                  <div className="popup-meta">
                     {addr.checks[0].apiCreateDate && (
-                      <div className="text-xs text-gray-500">
+                      <div className="popup-meta-item">
                         Created {format(new Date(addr.checks[0].apiCreateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiCreateDate), { addSuffix: true })})
                       </div>
                     )}
                     {addr.checks[0].apiUpdateDate && (
-                      <div className="text-xs text-gray-500">
+                      <div className="popup-meta-item">
                         Updated {format(new Date(addr.checks[0].apiUpdateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiUpdateDate), { addSuffix: true })})
                       </div>
                     )}
-                    <div className="text-xs text-gray-500">
+                    <div className="popup-meta-item">
                       Checked {format(new Date(addr.checks[0].checkedAt), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })})
                     </div>
                   </div>
@@ -241,35 +242,39 @@ export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapP
             }}
           >
             <Popup>
-              <div className="min-w-[200px] space-y-2">
-                <div className="font-semibold">{addr.addressString}</div>
-                <div className="rounded bg-yellow-100 px-2 py-1 text-sm text-yellow-800">
+              <div className="popup-content">
+                <div className="popup-title">{addr.addressString}</div>
+                <div className="popup-badge popup-badge-yellow">
                   📅 Preorder / Planned Service
                 </div>
-                <a 
-                  href="https://refer.omnifiber.com/stevendemanett" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="block text-center text-sm text-blue-600 hover:text-blue-800 underline"
-                >
-                  Order Service
-                </a>
-                <div className="text-xs text-gray-500 text-center italic">
-                  Referral link - We both get $50 gift cards!
-                </div>
+                {referralUrl && (
+                  <>
+                    <a 
+                      href={referralUrl}
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="popup-link"
+                    >
+                      Order Service
+                    </a>
+                    <div className="popup-referral-note">
+                      Referral link - We both get $50 gift cards!
+                    </div>
+                  </>
+                )}
                 {addr.checks[0] && (
-                  <div className="space-y-0.5">
+                  <div className="popup-meta">
                     {addr.checks[0].apiCreateDate && (
-                      <div className="text-xs text-gray-500">
+                      <div className="popup-meta-item">
                         Created {format(new Date(addr.checks[0].apiCreateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiCreateDate), { addSuffix: true })})
                       </div>
                     )}
                     {addr.checks[0].apiUpdateDate && (
-                      <div className="text-xs text-gray-500">
+                      <div className="popup-meta-item">
                         Updated {format(new Date(addr.checks[0].apiUpdateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiUpdateDate), { addSuffix: true })})
                       </div>
                     )}
-                    <div className="text-xs text-gray-500">
+                    <div className="popup-meta-item">
                       Checked {format(new Date(addr.checks[0].checkedAt), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })})
                     </div>
                   </div>
@@ -305,35 +310,39 @@ export default function ServiceMap({ addresses, clusteringOptions }: ServiceMapP
             }}
           >
             <Popup>
-              <div className="min-w-[200px] space-y-2">
-                <div className="font-semibold">{addr.addressString}</div>
-                <div className="rounded bg-green-100 px-2 py-1 text-sm text-green-800">
+              <div className="popup-content">
+                <div className="popup-title">{addr.addressString}</div>
+                <div className="popup-badge popup-badge-green">
                   ✓ Serviceable
                 </div>
-                <a 
-                  href="https://refer.omnifiber.com/stevendemanett" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="block text-center text-sm text-blue-600 hover:text-blue-800 underline"
-                >
-                  Order Service
-                </a>
-                <div className="text-xs text-gray-500 text-center italic">
-                  Referral link - We both get $50 gift cards!
-                </div>
+                {referralUrl && (
+                  <>
+                    <a 
+                      href={referralUrl}
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="popup-link"
+                    >
+                      Order Service
+                    </a>
+                    <div className="popup-referral-note">
+                      Referral link - We both get $50 gift cards!
+                    </div>
+                  </>
+                )}
                 {addr.checks[0] && (
-                  <div className="space-y-0.5">
+                  <div className="popup-meta">
                     {addr.checks[0].apiCreateDate && (
-                      <div className="text-xs text-gray-500">
+                      <div className="popup-meta-item">
                         Created {format(new Date(addr.checks[0].apiCreateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiCreateDate), { addSuffix: true })})
                       </div>
                     )}
                     {addr.checks[0].apiUpdateDate && (
-                      <div className="text-xs text-gray-500">
+                      <div className="popup-meta-item">
                         Updated {format(new Date(addr.checks[0].apiUpdateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiUpdateDate), { addSuffix: true })})
                       </div>
                     )}
-                    <div className="text-xs text-gray-500">
+                    <div className="popup-meta-item">
                       Checked {format(new Date(addr.checks[0].checkedAt), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })})
                     </div>
                   </div>

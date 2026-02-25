@@ -632,6 +632,7 @@ function MapContent() {
         ) : (
           <ServiceMap 
             addresses={filteredAddresses}
+            referralUrl={process.env.NEXT_PUBLIC_REFERRAL_URL}
             clusteringOptions={{
               maxClusterRadius: 80,
               disableClusteringAtZoom: 17,
