@@ -17,7 +17,9 @@ import {
   Loader2,
   Pause,
   XCircle,
+  Radio,
 } from 'lucide-react';
+import { PROVIDER_UI_METADATA } from '@fsm/lib/providers/ui';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -118,6 +120,18 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex items-center gap-4">
+            {/* Tracked Providers indicator — only renders for providers with actual data */}
+            {stats.activeProviderIds.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Radio className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">Tracking:</span>
+                {PROVIDER_UI_METADATA.filter((p) => stats.activeProviderIds.includes(p.id)).map((p) => (
+                  <Badge key={p.id} variant="secondary" className="text-xs">
+                    {p.name}
+                  </Badge>
+                ))}
+              </div>
+            )}
             {stats.hasActiveJobs && pollingEnabled && (
               <Badge variant="outline" className="animate-pulse gap-1.5 border-primary text-primary">
                 <Activity className="h-3 w-3" />

@@ -40,11 +40,13 @@ export interface DashboardStats {
     selectionId: string | null;
   }[];
   hasActiveJobs: boolean;
+  /** Provider ids that have at least one completed batch job with checks. */
+  activeProviderIds: string[];
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   try {
-    const [sources, selections, totalAddresses, totalChecks, recentJobs] = await Promise.all([
+    const [sources, selections, totalAddresses, totalChecks, recentJobs, usedProviderRows] = await Promise.all([
       prisma.geoJSONSource.findMany({
         orderBy: { uploadedAt: 'desc' },
         include: { _count: { select: { addresses: true } } },
@@ -59,6 +61,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
         orderBy: { createdAt: 'desc' },
         take: 4,
       }),
+      prisma.$queryRaw<{ provider: string }[]>`
+        SELECT DISTINCT provider FROM batch_jobs WHERE provider IS NOT NULL
+      `,
     ]);
 
     // ── Global serviceability stats ──
@@ -176,6 +181,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       noServiceChecks,
       recentJobs,
       hasActiveJobs: activeJobCount > 0,
+      activeProviderIds: usedProviderRows.map((r) => r.provider),
     };
   } catch (error) {
     console.error('Error in getDashboardStats:', error);
@@ -190,6 +196,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       noServiceChecks: 0,
       recentJobs: [],
       hasActiveJobs: false,
+      activeProviderIds: [],
     };
   }
 }

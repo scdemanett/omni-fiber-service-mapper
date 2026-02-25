@@ -18,6 +18,8 @@ export interface AddressAtTime {
   city: string | null;
   postcode: string | null;
   region: string | null;
+  /** Provider that produced this check (e.g. "omni-fiber"). Null for unchecked addresses. */
+  provider: string | null;
   serviceabilityType: string | null;
   serviceable: boolean | null;
   salesType: string | null;
@@ -65,6 +67,7 @@ export async function getAddressesAtTime(
       a.city,
       a.postcode,
       a.region,
+      lc.provider,
       lc."serviceabilityType",
       lc.serviceable,
       lc."salesType",
@@ -81,6 +84,7 @@ export async function getAddressesAtTime(
       ON a.id = atas."A" AND atas."B" = ${selectionId}
     LEFT JOIN LATERAL (
       SELECT
+        sc.provider,
         sc."serviceabilityType",
         sc.serviceable,
         sc."salesType",
@@ -122,6 +126,7 @@ export async function getAddressesForMap(selectionId: string): Promise<AddressAt
       a.city,
       a.postcode,
       a.region,
+      lc.provider,
       lc."serviceabilityType",
       lc.serviceable,
       lc."salesType",
@@ -138,6 +143,7 @@ export async function getAddressesForMap(selectionId: string): Promise<AddressAt
       ON a.id = atas."A" AND atas."B" = ${selectionId}
     LEFT JOIN LATERAL (
       SELECT
+        sc.provider,
         sc."serviceabilityType",
         sc.serviceable,
         sc."salesType",

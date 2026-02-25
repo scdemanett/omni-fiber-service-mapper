@@ -8,8 +8,7 @@ import {
   getAddressesByServiceabilityType,
   getAddressesWithErrors,
 } from '@/lib/batch-processor';
-import { isServiceable, type ShopperResponse } from '@/lib/fiber-decoder';
-import { fetchShopperData } from '@/lib/fiber-shopper-api';
+import { getProvider } from '@/lib/providers';
 
 const DELAY_MS = Number(process.env.BATCH_DELAY_MS ?? 250); // minimum spacing between request STARTs
 const MAX_IN_FLIGHT = Number(process.env.BATCH_MAX_IN_FLIGHT ?? 10); // cap concurrent API requests
@@ -32,9 +31,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action, selectionId, jobId, name, recheckType } = body;
 
+    const { provider = 'omni-fiber' } = body;
+
     switch (action) {
       case 'start':
-        return handleStart(selectionId, name, recheckType);
+        return handleStart(selectionId, name, recheckType, provider);
       case 'pause':
         return handlePause(jobId);
       case 'resume':
@@ -55,9 +56,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function handleStart(selectionId: string, name: string, recheckType?: 'unchecked' | 'preorder' | 'noservice' | 'errors' | 'all') {
+async function handleStart(selectionId: string, name: string, recheckType?: 'unchecked' | 'preorder' | 'noservice' | 'errors' | 'all', provider: string = 'omni-fiber') {
   if (!selectionId) {
     return NextResponse.json({ error: 'Selection ID is required' }, { status: 400 });
+  }
+
+  // Validate provider early — fail fast before creating any DB records
+  try {
+    getProvider(provider);
+  } catch {
+    return NextResponse.json({ error: `Unknown provider "${provider}"` }, { status: 400 });
   }
 
   // Check if there's already a running or pending job for this selection
@@ -129,11 +137,12 @@ async function handleStart(selectionId: string, name: string, recheckType?: 'unc
     jobName,
     selectionId,
     addresses.map((a) => a.id),
-    recheckMode
+    recheckMode,
+    provider
   );
 
   // Start processing in background (non-blocking)
-  processBatchInBackground(job.id, selectionId);
+  processBatchInBackground(job.id, selectionId, provider);
 
   return NextResponse.json({
     success: true,
@@ -201,9 +210,9 @@ async function handleResume(jobId: string) {
     );
   }
 
-  // Resume processing
+  // Resume processing with the provider recorded on the job
   await updateBatchJobStatus(jobId, 'running');
-  processBatchInBackground(jobId, batchJob.selectionId);
+  processBatchInBackground(jobId, batchJob.selectionId, batchJob.provider);
 
   const job = await getBatchJob(jobId);
   return NextResponse.json({ success: true, job });
@@ -255,10 +264,10 @@ async function handleStatus(jobId: string) {
 /**
  * Start batch processing in background (fire and forget)
  */
-function processBatchInBackground(jobId: string, selectionId: string) {
+function processBatchInBackground(jobId: string, selectionId: string, provider: string = 'omni-fiber') {
   // Use setImmediate to not block the response
   setImmediate(() => {
-    processBatch(jobId, selectionId).catch(async (error) => {
+    processBatch(jobId, selectionId, provider).catch(async (error) => {
       console.error('Batch processing error:', error);
       try {
         await updateBatchJobStatus(jobId, 'failed');
@@ -269,8 +278,8 @@ function processBatchInBackground(jobId: string, selectionId: string) {
   });
 }
 
-async function processBatch(jobId: string, selectionId: string) {
-  console.log(`Starting batch processing for job ${jobId}`);
+async function processBatch(jobId: string, selectionId: string, provider: string = 'omni-fiber') {
+  console.log(`Starting batch processing for job ${jobId} (provider: ${provider})`);
   
   // Get the current job state
   const job = await prisma.batchJob.findUnique({ where: { id: jobId } });
@@ -351,30 +360,35 @@ async function processBatch(jobId: string, selectionId: string) {
     return true;
   };
 
+  // Resolve provider config once for the whole batch
+  const providerConfig = getProvider(provider);
+
   const runOne = async (address: { id: string; addressString: string }, i: number) => {
     const started = Date.now();
     try {
-      console.log(`[${i + 1}/${addresses.length}] Checking: ${address.addressString}`);
+      console.log(`[${i + 1}/${addresses.length}] [${providerConfig.name}] Checking: ${address.addressString}`);
 
-      const shopperData = await fetchShopperData(address.addressString);
-      if (!shopperData) {
-        const msg = 'Failed to fetch data from API';
+      const rawData = await providerConfig.fetch(address.addressString);
+      if (!rawData) {
+        const msg = `Failed to fetch data from ${providerConfig.name} API`;
         console.log(`  -> API ERROR: ${msg} (recording error + advancing progress)`);
         try {
-          await recordServiceabilityCheck(address.id, jobId, selectionId, null, msg);
+          await recordServiceabilityCheck(address.id, jobId, selectionId, null, msg, provider);
         } catch (dbErr) {
           console.error(`Failed to record API error for ${address.addressString}:`, dbErr);
         }
         return;
       }
 
-      const serviceabilityResult = isServiceable(shopperData as ShopperResponse);
+      const serviceabilityResult = providerConfig.decode(rawData);
 
       await recordServiceabilityCheck(
         address.id,
         jobId,
         selectionId,
-        serviceabilityResult
+        serviceabilityResult,
+        undefined,
+        provider
       );
 
       const elapsed = Date.now() - started;
@@ -386,7 +400,7 @@ async function processBatch(jobId: string, selectionId: string) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
       console.log(`  -> ERROR: ${msg} (recording error + advancing progress)`);
       try {
-        await recordServiceabilityCheck(address.id, jobId, selectionId, null, msg);
+        await recordServiceabilityCheck(address.id, jobId, selectionId, null, msg, provider);
       } catch (dbErr) {
         console.error(`Failed to record error for ${address.addressString}:`, dbErr);
       }

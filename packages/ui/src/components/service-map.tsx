@@ -1,11 +1,23 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { formatDistanceToNow, format } from 'date-fns';
+
+/**
+ * Slim UI-facing provider descriptor.
+ * Contains only what the map component needs — no fetch/decode methods
+ * so this stays safe to import in client components.
+ */
+export interface ServiceMapProvider {
+  id: string;
+  name: string;
+  futureServiceUrl: string;
+  referralUrl?: string;
+}
 
 interface AddressWithCheck {
   id: string;
@@ -14,6 +26,8 @@ interface AddressWithCheck {
   addressString: string;
   city: string | null;
   checks: {
+    /** Provider id that produced this check, e.g. "omni-fiber". */
+    provider: string;
     serviceable: boolean;
     serviceabilityType: string;
     salesType: string | null;
@@ -27,12 +41,17 @@ interface AddressWithCheck {
 
 interface ServiceMapProps {
   addresses: AddressWithCheck[];
-  referralUrl?: string;
+  /**
+   * Ordered list of providers to display in popups.
+   * Phase 1: single-element array (Omni Fiber).
+   * Phase 2: one entry per provider once multi-provider checks are stored.
+   */
+  providers: ServiceMapProvider[];
   clusteringOptions?: {
-    maxClusterRadius?: number; // Max radius a cluster will cover (default: 80)
-    disableClusteringAtZoom?: number; // Disable clustering at this zoom level (default: 18)
-    showCoverageOnHover?: boolean; // Show area covered by cluster on hover
-    spiderfyOnMaxZoom?: boolean; // Spiderfy markers at max zoom
+    maxClusterRadius?: number;
+    disableClusteringAtZoom?: number;
+    showCoverageOnHover?: boolean;
+    spiderfyOnMaxZoom?: boolean;
   };
 }
 
@@ -42,7 +61,6 @@ function FitBounds({ addresses }: { addresses: AddressWithCheck[] }) {
   const hasInitialized = useRef(false);
 
   useEffect(() => {
-    // Only fit bounds once when addresses first load, not on subsequent updates
     if (addresses.length > 0 && !hasInitialized.current) {
       const bounds = addresses.map((a) => [a.latitude, a.longitude] as [number, number]);
       map.fitBounds(bounds, { padding: [50, 50] });
@@ -53,10 +71,13 @@ function FitBounds({ addresses }: { addresses: AddressWithCheck[] }) {
   return null;
 }
 
-export default function ServiceMap({ addresses, referralUrl, clusteringOptions }: ServiceMapProps) {
+export default function ServiceMap({ addresses, providers, clusteringOptions }: ServiceMapProps) {
   const mapRef = useRef(null);
 
-  // Clustering configuration with defaults
+  // Primary provider drives the popup links for Phase 1 (single-provider).
+  // Phase 2 will loop over providers per address check.
+  const primaryProvider = providers[0];
+
   const clusterConfig = {
     maxClusterRadius: clusteringOptions?.maxClusterRadius ?? 80,
     disableClusteringAtZoom: clusteringOptions?.disableClusteringAtZoom ?? 18,
@@ -66,7 +87,6 @@ export default function ServiceMap({ addresses, referralUrl, clusteringOptions }
     chunkedLoading: true,
   };
 
-  // Group addresses by serviceability type for better rendering
   const { serviceable, preorder, noService, unchecked } = useMemo(() => {
     const serviceable: AddressWithCheck[] = [];
     const preorder: AddressWithCheck[] = [];
@@ -79,31 +99,39 @@ export default function ServiceMap({ addresses, referralUrl, clusteringOptions }
         unchecked.push(addr);
       } else {
         const type = check.serviceabilityType;
-        if (type === 'serviceable') {
-          serviceable.push(addr);
-        } else if (type === 'preorder') {
-          preorder.push(addr);
-        } else {
-          noService.push(addr);
-        }
+        if (type === 'serviceable') serviceable.push(addr);
+        else if (type === 'preorder') preorder.push(addr);
+        else noService.push(addr);
       }
     }
 
     return { serviceable, preorder, noService, unchecked };
   }, [addresses]);
 
-  // Default center (Ohio)
   const defaultCenter: [number, number] = [41.5, -81.5];
   const defaultZoom = 10;
 
-  const getMarkerColor = (addr: AddressWithCheck) => {
-    const check = addr.checks[0];
-    if (!check) return 'hsl(240 5% 55%)'; // unchecked - gray
-    const type = check.serviceabilityType;
-    if (type === 'serviceable') return 'hsl(145 60% 45%)'; // serviceable - green
-    if (type === 'preorder') return 'hsl(45 90% 55%)'; // preorder - yellow
-    return 'hsl(0 70% 50%)'; // no service - red
-  };
+  /** Render the date-stamp rows at the bottom of every popup. */
+  const renderCheckMeta = (check: AddressWithCheck['checks'][0]) => (
+    <div className="popup-meta">
+      {check.apiCreateDate && (
+        <div className="popup-meta-item">
+          Created {format(new Date(check.apiCreateDate), 'MM/dd/yyyy')} (
+          {formatDistanceToNow(new Date(check.apiCreateDate), { addSuffix: true })})
+        </div>
+      )}
+      {check.apiUpdateDate && (
+        <div className="popup-meta-item">
+          Updated {format(new Date(check.apiUpdateDate), 'MM/dd/yyyy')} (
+          {formatDistanceToNow(new Date(check.apiUpdateDate), { addSuffix: true })})
+        </div>
+      )}
+      <div className="popup-meta-item">
+        Checked {format(new Date(check.checkedAt), 'MM/dd/yyyy')} (
+        {formatDistanceToNow(new Date(check.checkedAt), { addSuffix: true })})
+      </div>
+    </div>
+  );
 
   return (
     <MapContainer
@@ -147,9 +175,7 @@ export default function ServiceMap({ addresses, referralUrl, clusteringOptions }
             <Popup>
               <div className="popup-content">
                 <div className="popup-title">{addr.addressString}</div>
-                <div className="popup-badge popup-badge-gray">
-                  Not checked yet
-                </div>
+                <div className="popup-badge popup-badge-gray">Not checked yet</div>
               </div>
             </Popup>
           </CircleMarker>
@@ -183,34 +209,21 @@ export default function ServiceMap({ addresses, referralUrl, clusteringOptions }
             <Popup>
               <div className="popup-content">
                 <div className="popup-title">{addr.addressString}</div>
-                <div className="popup-badge popup-badge-red">
-                  ❌ No Service Available
-                </div>
-                <a 
-                  href="https://www.omnifiber.com/future-service/" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="popup-link"
-                >
-                  Request Future Service
-                </a>
-                {addr.checks[0] && (
-                  <div className="popup-meta">
-                    {addr.checks[0].apiCreateDate && (
-                      <div className="popup-meta-item">
-                        Created {format(new Date(addr.checks[0].apiCreateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiCreateDate), { addSuffix: true })})
-                      </div>
-                    )}
-                    {addr.checks[0].apiUpdateDate && (
-                      <div className="popup-meta-item">
-                        Updated {format(new Date(addr.checks[0].apiUpdateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiUpdateDate), { addSuffix: true })})
-                      </div>
-                    )}
-                    <div className="popup-meta-item">
-                      Checked {format(new Date(addr.checks[0].checkedAt), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })})
-                    </div>
-                  </div>
+                {primaryProvider && (
+                  <div className="popup-provider-label">{primaryProvider.name}</div>
                 )}
+                <div className="popup-badge popup-badge-red">No Service Available</div>
+                {primaryProvider && (
+                  <a
+                    href={primaryProvider.futureServiceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="popup-link"
+                  >
+                    Request Future Service
+                  </a>
+                )}
+                {addr.checks[0] && renderCheckMeta(addr.checks[0])}
               </div>
             </Popup>
           </CircleMarker>
@@ -244,14 +257,15 @@ export default function ServiceMap({ addresses, referralUrl, clusteringOptions }
             <Popup>
               <div className="popup-content">
                 <div className="popup-title">{addr.addressString}</div>
-                <div className="popup-badge popup-badge-yellow">
-                  📅 Preorder / Planned Service
-                </div>
-                {referralUrl && (
+                {primaryProvider && (
+                  <div className="popup-provider-label">{primaryProvider.name}</div>
+                )}
+                <div className="popup-badge popup-badge-yellow">Preorder / Planned Service</div>
+                {primaryProvider?.referralUrl && (
                   <>
-                    <a 
-                      href={referralUrl}
-                      target="_blank" 
+                    <a
+                      href={primaryProvider.referralUrl}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="popup-link"
                     >
@@ -262,23 +276,7 @@ export default function ServiceMap({ addresses, referralUrl, clusteringOptions }
                     </div>
                   </>
                 )}
-                {addr.checks[0] && (
-                  <div className="popup-meta">
-                    {addr.checks[0].apiCreateDate && (
-                      <div className="popup-meta-item">
-                        Created {format(new Date(addr.checks[0].apiCreateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiCreateDate), { addSuffix: true })})
-                      </div>
-                    )}
-                    {addr.checks[0].apiUpdateDate && (
-                      <div className="popup-meta-item">
-                        Updated {format(new Date(addr.checks[0].apiUpdateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiUpdateDate), { addSuffix: true })})
-                      </div>
-                    )}
-                    <div className="popup-meta-item">
-                      Checked {format(new Date(addr.checks[0].checkedAt), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })})
-                    </div>
-                  </div>
-                )}
+                {addr.checks[0] && renderCheckMeta(addr.checks[0])}
               </div>
             </Popup>
           </CircleMarker>
@@ -312,14 +310,15 @@ export default function ServiceMap({ addresses, referralUrl, clusteringOptions }
             <Popup>
               <div className="popup-content">
                 <div className="popup-title">{addr.addressString}</div>
-                <div className="popup-badge popup-badge-green">
-                  ✓ Serviceable
-                </div>
-                {referralUrl && (
+                {primaryProvider && (
+                  <div className="popup-provider-label">{primaryProvider.name}</div>
+                )}
+                <div className="popup-badge popup-badge-green">Serviceable</div>
+                {primaryProvider?.referralUrl && (
                   <>
-                    <a 
-                      href={referralUrl}
-                      target="_blank" 
+                    <a
+                      href={primaryProvider.referralUrl}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="popup-link"
                     >
@@ -330,23 +329,7 @@ export default function ServiceMap({ addresses, referralUrl, clusteringOptions }
                     </div>
                   </>
                 )}
-                {addr.checks[0] && (
-                  <div className="popup-meta">
-                    {addr.checks[0].apiCreateDate && (
-                      <div className="popup-meta-item">
-                        Created {format(new Date(addr.checks[0].apiCreateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiCreateDate), { addSuffix: true })})
-                      </div>
-                    )}
-                    {addr.checks[0].apiUpdateDate && (
-                      <div className="popup-meta-item">
-                        Updated {format(new Date(addr.checks[0].apiUpdateDate), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].apiUpdateDate), { addSuffix: true })})
-                      </div>
-                    )}
-                    <div className="popup-meta-item">
-                      Checked {format(new Date(addr.checks[0].checkedAt), 'MM/dd/yyyy')} ({formatDistanceToNow(new Date(addr.checks[0].checkedAt), { addSuffix: true })})
-                    </div>
-                  </div>
-                )}
+                {addr.checks[0] && renderCheckMeta(addr.checks[0])}
               </div>
             </Popup>
           </CircleMarker>
@@ -355,4 +338,3 @@ export default function ServiceMap({ addresses, referralUrl, clusteringOptions }
     </MapContainer>
   );
 }
-

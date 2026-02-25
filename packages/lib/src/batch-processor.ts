@@ -36,7 +36,8 @@ export async function createBatchJob(
   name: string,
   selectionId: string | null,
   addressIds: string[],
-  recheckType?: string
+  recheckType?: string,
+  provider: string = 'omni-fiber'
 ): Promise<BatchProgress> {
   const job = await prisma.batchJob.create({
     data: {
@@ -44,6 +45,7 @@ export async function createBatchJob(
       selectionId,
       status: 'pending',
       recheckType: recheckType || 'unchecked',
+      provider,
       totalAddresses: addressIds.length,
       checkedCount: 0,
       serviceableCount: 0,
@@ -126,7 +128,8 @@ export async function recordServiceabilityCheck(
   jobId: string,
   selectionId: string | null,
   result: ServiceabilityResult | null,
-  error?: string
+  error?: string,
+  provider: string = 'omni-fiber'
 ): Promise<void> {
   const hasError = (error ?? '').trim().length > 0;
   const safeResult: ServiceabilityResult = result ?? {
@@ -146,6 +149,7 @@ export async function recordServiceabilityCheck(
         addressId,
         selectionId: selectionId ?? undefined,
         batchJobId: jobId,
+        provider,
         serviceable: safeResult.serviceable,
         serviceabilityType: safeResult.serviceabilityType,
         salesType: safeResult.salesType,

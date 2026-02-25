@@ -24,6 +24,7 @@ import { getCheckTimeline, getAddressesAtTime, getAddressesForMap } from '@/app/
 import { format } from 'date-fns';
 import { usePolling } from '@/lib/polling-context';
 import { useSelection } from '@/lib/selection-context';
+import { PROVIDER_UI_METADATA } from '@fsm/lib/providers/ui';
 
 interface BatchJob {
   id: string;
@@ -59,6 +60,7 @@ interface AddressWithCheck {
   postcode: string | null;
   region: string | null;
   checks: {
+    provider: string;
     serviceable: boolean;
     serviceabilityType: string;
     salesType: string | null;
@@ -182,6 +184,7 @@ function MapContent() {
         postcode: addr.postcode ?? null,
         region: addr.region ?? null,
         checks: addr.checkedAt ? [{
+          provider: addr.provider ?? 'omni-fiber',
           serviceable: addr.serviceable ?? false,
           serviceabilityType: addr.serviceabilityType ?? 'none',
           salesType: addr.salesType,
@@ -242,6 +245,7 @@ function MapContent() {
         postcode: addr.postcode ?? null,
         region: addr.region ?? null,
         checks: addr.checkedAt ? [{
+          provider: addr.provider ?? 'omni-fiber',
           serviceable: addr.serviceable ?? false,
           serviceabilityType: addr.serviceabilityType ?? 'none',
           salesType: addr.salesType,
@@ -700,7 +704,10 @@ function MapContent() {
         ) : (
           <ServiceMap 
             addresses={filteredAddresses}
-            referralUrl={process.env.NEXT_PUBLIC_REFERRAL_URL}
+            providers={PROVIDER_UI_METADATA.filter((p) => !p.isStub).map((p) => ({
+              ...p,
+              referralUrl: p.id === 'omni-fiber' ? process.env.NEXT_PUBLIC_OMNI_REFERRAL_URL : undefined,
+            }))}
             clusteringOptions={{
               maxClusterRadius: 80,
               disableClusteringAtZoom: 17,

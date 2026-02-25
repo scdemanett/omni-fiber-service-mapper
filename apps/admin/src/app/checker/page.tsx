@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/select';
 import { getSelections } from '@/app/actions/selections';
 import { getRunsForSelection, deleteRun, type RunSummary } from '@/app/actions/map-timeline';
+import { ACTIVE_PROVIDER_UI_METADATA } from '@fsm/lib/providers/ui';
 import { format } from 'date-fns';
 import { Suspense } from 'react';
 import { usePolling } from '@/lib/polling-context';
@@ -102,6 +103,7 @@ function CheckerContent() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [recheckType, setRecheckType] = useState<'unchecked' | 'preorder' | 'noservice' | 'errors' | 'all'>('unchecked');
+  const [selectedProvider, setSelectedProvider] = useState<string>(ACTIVE_PROVIDER_UI_METADATA[0]?.id ?? 'omni-fiber');
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   // Manage runs dialog state
@@ -285,6 +287,7 @@ function CheckerContent() {
           selectionId: selectedSelectionId,
           name: `${selection.name} - ${new Date().toLocaleString()}`,
           recheckType,
+          provider: selectedProvider,
         }),
       });
 
@@ -530,6 +533,22 @@ function CheckerContent() {
                         {selectedSelection.noServiceCount.toLocaleString()}
                       </span>
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Provider</label>
+                    <Select value={selectedProvider} onValueChange={setSelectedProvider}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ACTIVE_PROVIDER_UI_METADATA.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-2">
