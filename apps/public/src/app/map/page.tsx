@@ -380,8 +380,13 @@ function MapContent() {
   // Poll for updates when there's an active job and polling is enabled.
   // Job status is checked every 3s (lightweight). Address pins are refreshed every 15s
   // (every 5th tick) to reduce DB load while still showing progress during a run.
+  //
+  // Use a stable boolean rather than the activeJob object itself so that the effect
+  // does not re-run (and restart polling) every time checkForActiveJob returns a new
+  // object reference for the same running job.
+  const hasActiveJob = !!activeJob;
   useEffect(() => {
-    if (activeJob && selectedSelectionId && pollingEnabled && !timelineEnabled) {
+    if (hasActiveJob && selectedSelectionId && pollingEnabled && !timelineEnabled) {
       let cancelled = false;
       pollCountRef.current = 0;
 
@@ -426,7 +431,7 @@ function MapContent() {
       clearTimeout(pollingRef.current);
       pollingRef.current = null;
     }
-  }, [activeJob, selectedSelectionId, pollingEnabled, timelineEnabled, loadAddresses, checkForActiveJob, loadSelections, loadTimeline]);
+  }, [hasActiveJob, selectedSelectionId, pollingEnabled, timelineEnabled, loadAddresses, checkForActiveJob, loadSelections, loadTimeline]);
 
   // Filter addresses for display
   const filteredAddresses = addresses.filter((addr) => {
