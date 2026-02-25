@@ -15,12 +15,21 @@ import {
   List,
   XCircle,
   StopCircle,
+  History,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -29,6 +38,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getSelections } from '@/app/actions/selections';
+import { getRunsForSelection, deleteRun, type RunSummary } from '@/app/actions/map-timeline';
+import { format } from 'date-fns';
 import { Suspense } from 'react';
 import { usePolling } from '@/lib/polling-context';
 import { useSelection } from '@/lib/selection-context';
@@ -92,6 +103,13 @@ function CheckerContent() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [recheckType, setRecheckType] = useState<'unchecked' | 'preorder' | 'noservice' | 'errors' | 'all'>('unchecked');
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Manage runs dialog state
+  const [runsDialogOpen, setRunsDialogOpen] = useState(false);
+  const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [isLoadingRuns, setIsLoadingRuns] = useState(false);
+  const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const loadSelections = useCallback(async () => {
     try {
@@ -359,6 +377,37 @@ function CheckerContent() {
     } catch (error) {
       console.error('Error resuming batch check:', error);
       toast.error('Failed to resume');
+    }
+  };
+
+  const handleOpenRunsDialog = async () => {
+    if (!selectedSelectionId) return;
+    setRunsDialogOpen(true);
+    setIsLoadingRuns(true);
+    try {
+      const data = await getRunsForSelection(selectedSelectionId);
+      setRuns(data);
+    } catch (error) {
+      console.error('Error loading runs:', error);
+      toast.error('Failed to load runs');
+    } finally {
+      setIsLoadingRuns(false);
+    }
+  };
+
+  const handleDeleteRun = async (runId: string) => {
+    setDeletingRunId(runId);
+    try {
+      await deleteRun(runId);
+      setRuns((prev) => prev.filter((r) => r.id !== runId));
+      toast.success('Run deleted');
+      await loadSelections();
+    } catch (error) {
+      console.error('Error deleting run:', error);
+      toast.error('Failed to delete run');
+    } finally {
+      setDeletingRunId(null);
+      setConfirmDeleteId(null);
     }
   };
 
@@ -630,6 +679,101 @@ function CheckerContent() {
               )}
             </CardContent>
           </Card>
+
+          {/* Manage Runs */}
+          {selectedSelectionId && (
+            <Dialog open={runsDialogOpen} onOpenChange={(open) => {
+              setRunsDialogOpen(open);
+              if (!open) setConfirmDeleteId(null);
+            }}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleOpenRunsDialog}
+                >
+                  <History className="mr-2 h-4 w-4" />
+                  Manage Runs
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Historical Runs</DialogTitle>
+                </DialogHeader>
+                {isLoadingRuns ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : runs.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">No runs found for this campaign.</p>
+                ) : (
+                  <div className="mt-2 space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                    {runs.map((run) => (
+                      <div
+                        key={run.id}
+                        className="flex items-start justify-between rounded-lg border border-border/60 bg-card p-3 gap-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm truncate">{run.name}</span>
+                            <Badge
+                              variant={run.status === 'completed' ? 'default' : run.status === 'failed' || run.status === 'cancelled' ? 'destructive' : 'secondary'}
+                              className="text-xs capitalize"
+                            >
+                              {run.status}
+                            </Badge>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {run.startedAt ? format(new Date(run.startedAt), 'MMM d, yyyy h:mm a') : 'Unknown date'}
+                            {run.completedAt && ` – ${format(new Date(run.completedAt), 'h:mm a')}`}
+                          </div>
+                          <div className="mt-1.5 flex items-center gap-3 text-xs">
+                            <span className="text-serviceable font-medium">{run.serviceableCount} available</span>
+                            <span className="text-preorder font-medium">{run.preorderCount} preorder</span>
+                            <span className="text-no-service font-medium">{run.noServiceCount} no service</span>
+                            <span className="text-muted-foreground">{run.checkedCount}/{run.totalAddresses} checked</span>
+                          </div>
+                        </div>
+                        <div className="shrink-0">
+                          {confirmDeleteId === run.id ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">Delete this run?</span>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteRun(run.id)}
+                                disabled={deletingRunId === run.id}
+                              >
+                                {deletingRunId === run.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Yes, delete'}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setConfirmDeleteId(null)}
+                                disabled={deletingRunId === run.id}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-muted-foreground hover:text-destructive"
+                              onClick={() => setConfirmDeleteId(run.id)}
+                              disabled={deletingRunId !== null}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
+          )}
 
           {/* Recent Jobs */}
           {allJobs.length > 0 && (
