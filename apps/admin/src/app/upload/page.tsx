@@ -281,7 +281,7 @@ export default function UploadPage() {
       <div className="mb-8">
         <h1 className="text-4xl font-bold tracking-tight">Upload GeoJSON</h1>
         <p className="mt-2 text-lg text-muted-foreground">
-          Upload address data from OpenAddresses.io or other GeoJSON sources (up to 100MB)
+          Upload address data from OpenAddresses.io or other GeoJSON sources (up to 200MB)
         </p>
       </div>
 
@@ -355,7 +355,7 @@ export default function UploadPage() {
                     {isDragActive ? 'Drop the file here' : 'Drag & drop or click to select'}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    .json or .geojson files (up to 100MB)
+                    .json or .geojson files (up to 200MB)
                   </p>
                 </div>
               )}
