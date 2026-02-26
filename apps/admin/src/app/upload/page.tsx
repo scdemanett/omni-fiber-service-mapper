@@ -11,7 +11,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { getGeoJSONSources, deleteGeoJSONSource, renameGeoJSONSource } from '@/app/actions/geojson';
+import { getGeoJSONSources, deleteGeoJSONSource, renameGeoJSONSource, getGeoJSONSourceDeleteImpact } from '@/app/actions/geojson';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
@@ -52,6 +60,18 @@ export default function UploadPage() {
   const [uploadedSourceId, setUploadedSourceId] = useState<string | null>(null);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+
+  // Delete confirmation dialog state
+  const [deleteDialogSource, setDeleteDialogSource] = useState<GeoJSONSource | null>(null);
+  const [deleteImpact, setDeleteImpact] = useState<{
+    addressCount: number;
+    checkCount: number;
+    fullyEmptiedSelections: { id: string; name: string }[];
+    partiallyAffectedSelections: { id: string; name: string }[];
+  } | null>(null);
+  const [deleteImpactLoading, setDeleteImpactLoading] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadSources = useCallback(async () => {
     try {
@@ -217,14 +237,31 @@ export default function UploadPage() {
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent, sourceId: string, sourceName: string) => {
-    e.stopPropagation(); // Prevent navigation
-    if (!confirm(`Delete "${sourceName}" and all its addresses?`)) return;
-
+  const handleDeleteClick = async (e: React.MouseEvent, source: GeoJSONSource) => {
+    e.stopPropagation();
+    setDeleteDialogSource(source);
+    setDeleteConfirmText('');
+    setDeleteImpact(null);
+    setDeleteImpactLoading(true);
     try {
-      const result = await deleteGeoJSONSource(sourceId);
+      const impact = await getGeoJSONSourceDeleteImpact(source.id);
+      setDeleteImpact(impact);
+    } catch {
+      setDeleteImpact(null);
+    } finally {
+      setDeleteImpactLoading(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteDialogSource) return;
+    setIsDeleting(true);
+    try {
+      const result = await deleteGeoJSONSource(deleteDialogSource.id);
       if (result.success) {
         toast.success('Source deleted');
+        setDeleteDialogSource(null);
+        setDeleteConfirmText('');
         loadSources();
       } else {
         toast.error(result.error || 'Delete failed');
@@ -232,6 +269,8 @@ export default function UploadPage() {
     } catch (error) {
       console.error('Delete error:', error);
       toast.error('Delete failed');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -510,7 +549,7 @@ export default function UploadPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={(e) => handleDelete(e, source.id, source.name)}
+                            onClick={(e) => handleDeleteClick(e, source)}
                             className="text-muted-foreground hover:text-destructive"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -525,6 +564,141 @@ export default function UploadPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Delete confirmation dialog */}
+      <Dialog
+        open={!!deleteDialogSource}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) {
+            setDeleteDialogSource(null);
+            setDeleteConfirmText('');
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Delete GeoJSON Source
+            </DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-4 pt-1">
+                <p>
+                  You are about to permanently delete{' '}
+                  <span className="font-semibold text-foreground">&quot;{deleteDialogSource?.name}&quot;</span>.
+                  This action cannot be undone.
+                </p>
+
+                {/* Impact summary */}
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
+                  <p className="text-sm font-semibold text-destructive uppercase tracking-wide">
+                    What will be permanently deleted
+                  </p>
+                  {deleteImpactLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Calculating impact...
+                    </div>
+                  ) : deleteImpact ? (
+                    <div className="space-y-3 text-sm text-foreground">
+                      <ul className="space-y-1">
+                        <li>
+                          <span className="font-medium">{deleteImpact.addressCount.toLocaleString()}</span>
+                          {' '}address{deleteImpact.addressCount !== 1 ? 'es' : ''}
+                        </li>
+                        <li>
+                          <span className="font-medium">{deleteImpact.checkCount.toLocaleString()}</span>
+                          {' '}serviceability check result{deleteImpact.checkCount !== 1 ? 's' : ''} (all history)
+                        </li>
+                        {deleteImpact.fullyEmptiedSelections.length > 0 && (
+                          <li>
+                            <span className="font-medium">{deleteImpact.fullyEmptiedSelections.length}</span>
+                            {' '}selection{deleteImpact.fullyEmptiedSelections.length !== 1 ? 's' : ''}
+                            {' '}<span className="text-destructive font-medium">will be deleted</span>
+                            {' '}(all their addresses come from this source)
+                            <ul className="mt-1 ml-4 space-y-0.5 text-muted-foreground">
+                              {deleteImpact.fullyEmptiedSelections.map((s) => (
+                                <li key={s.id} className="truncate">• {s.name}</li>
+                              ))}
+                            </ul>
+                          </li>
+                        )}
+                      </ul>
+                      {deleteImpact.partiallyAffectedSelections.length > 0 && (
+                        <div className="rounded border border-amber-300/50 bg-amber-50/50 dark:bg-amber-950/20 p-3 space-y-1">
+                          <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
+                            Will lose some addresses (not deleted)
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            These selections contain addresses from other sources and will survive with reduced counts.
+                          </p>
+                          <ul className="mt-1 space-y-0.5 text-xs text-foreground">
+                            {deleteImpact.partiallyAffectedSelections.map((s) => (
+                              <li key={s.id} className="truncate">• {s.name}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Typed confirmation */}
+                <div className="space-y-2">
+                  <Label htmlFor="delete-confirm" className="text-sm">
+                    Type{' '}
+                    <span className="font-mono font-semibold text-foreground">
+                      delete {deleteDialogSource?.name}
+                    </span>
+                    {' '}to confirm
+                  </Label>
+                  <Input
+                    id="delete-confirm"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    onPaste={(e) => e.preventDefault()}
+                    placeholder={`delete ${deleteDialogSource?.name}`}
+                    disabled={isDeleting}
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialogSource(null);
+                setDeleteConfirmText('');
+              }}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={
+                isDeleting ||
+                deleteConfirmText !== `delete ${deleteDialogSource?.name}`
+              }
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete permanently
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -129,18 +129,95 @@ export async function renameGeoJSONSource(sourceId: string, newName: string) {
 }
 
 /**
- * Delete a GeoJSON source and all its addresses
+ * Get counts and names of what will be destroyed when a source is deleted.
+ * Selections are split into two categories:
+ *  - fullyEmptied: every address in the selection comes from this source → will be deleted
+ *  - partiallyAffected: mixed sources → will lose some addresses but survive
+ */
+export async function getGeoJSONSourceDeleteImpact(sourceId: string) {
+  const [addressCount, checkCount, fullyEmptied, partiallyAffected] = await Promise.all([
+    prisma.address.count({ where: { sourceId } }),
+    prisma.serviceabilityCheck.count({ where: { address: { sourceId } } }),
+    // Selections where ALL addresses come from this source
+    prisma.$queryRaw<{ id: string; name: string }[]>`
+      SELECT s.id, s.name
+      FROM address_selections s
+      WHERE EXISTS (
+        SELECT 1 FROM "_AddressToAddressSelection" atas
+        INNER JOIN addresses a ON atas."A" = a.id
+        WHERE atas."B" = s.id AND a."sourceId" = ${sourceId}
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM "_AddressToAddressSelection" atas
+        INNER JOIN addresses a ON atas."A" = a.id
+        WHERE atas."B" = s.id AND a."sourceId" != ${sourceId}
+      )
+      ORDER BY s.name
+    `,
+    // Selections where only SOME addresses come from this source
+    prisma.$queryRaw<{ id: string; name: string }[]>`
+      SELECT s.id, s.name
+      FROM address_selections s
+      WHERE EXISTS (
+        SELECT 1 FROM "_AddressToAddressSelection" atas
+        INNER JOIN addresses a ON atas."A" = a.id
+        WHERE atas."B" = s.id AND a."sourceId" = ${sourceId}
+      )
+      AND EXISTS (
+        SELECT 1 FROM "_AddressToAddressSelection" atas
+        INNER JOIN addresses a ON atas."A" = a.id
+        WHERE atas."B" = s.id AND a."sourceId" != ${sourceId}
+      )
+      ORDER BY s.name
+    `,
+  ]);
+
+  return {
+    addressCount,
+    checkCount,
+    fullyEmptiedSelections: fullyEmptied,
+    partiallyAffectedSelections: partiallyAffected,
+  };
+}
+
+/**
+ * Delete a GeoJSON source and all its addresses.
+ * Selections that would be fully emptied are also deleted in the same transaction.
  */
 export async function deleteGeoJSONSource(sourceId: string) {
   try {
-    await prisma.geoJSONSource.delete({
-      where: { id: sourceId },
-    });
-    
+    // Find selections that will be fully emptied so we can delete them too
+    const fullyEmptied = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT s.id
+      FROM address_selections s
+      WHERE EXISTS (
+        SELECT 1 FROM "_AddressToAddressSelection" atas
+        INNER JOIN addresses a ON atas."A" = a.id
+        WHERE atas."B" = s.id AND a."sourceId" = ${sourceId}
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM "_AddressToAddressSelection" atas
+        INNER JOIN addresses a ON atas."A" = a.id
+        WHERE atas."B" = s.id AND a."sourceId" != ${sourceId}
+      )
+    `;
+
+    const fullyEmptiedIds = fullyEmptied.map((s) => s.id);
+
+    await prisma.$transaction([
+      // Delete selections that would become empty shells
+      ...(fullyEmptiedIds.length > 0
+        ? [prisma.addressSelection.deleteMany({ where: { id: { in: fullyEmptiedIds } } })]
+        : []),
+      // Delete the source (cascades → addresses → checks + join table entries)
+      prisma.geoJSONSource.delete({ where: { id: sourceId } }),
+    ]);
+
     revalidatePath('/upload');
     revalidatePath('/selections');
+    revalidatePath('/checker');
     revalidatePath('/');
-    
+
     return { success: true };
   } catch (error) {
     console.error('Error deleting source:', error);
