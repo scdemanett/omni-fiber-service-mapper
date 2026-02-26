@@ -216,6 +216,10 @@ function CheckerContent() {
                 clearTimeout(pollingRef.current);
                 pollingRef.current = null;
               }
+              // Immediately sync the terminal status into allJobs so activeJobForSelection
+              // is no longer truthy before the full refresh completes — otherwise canStartNew
+              // stays false and the Start button never re-renders.
+              setAllJobs(prev => prev.map(j => j.id === data.job.id ? data.job : j));
               // Show refreshing state while updating data
               setIsRefreshing(true);
               // Refresh both in parallel and wait for both to complete
@@ -537,7 +541,7 @@ function CheckerContent() {
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Provider</label>
-                    <Select value={selectedProvider} onValueChange={setSelectedProvider}>
+                    <Select value={selectedProvider} onValueChange={setSelectedProvider} disabled={!!isJobActive}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -553,7 +557,7 @@ function CheckerContent() {
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Check Mode</label>
-                    <Select value={recheckType} onValueChange={(value: 'unchecked' | 'preorder' | 'noservice' | 'errors' | 'all') => setRecheckType(value)}>
+                    <Select value={recheckType} onValueChange={(value: 'unchecked' | 'preorder' | 'noservice' | 'errors' | 'all') => setRecheckType(value)} disabled={!!isJobActive}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
