@@ -38,7 +38,6 @@ export interface ParsedAddress {
   region: string | null;
   postcode: string | null;
   addressString: string;
-  properties: string; // JSON string of all properties
 }
 
 /**
@@ -87,7 +86,6 @@ export function parseFeature(feature: GeoJSONFeature): ParsedAddress | null {
       region: props.region || null,
       postcode: props.postcode || null,
       addressString: formatAddressString(feature),
-      properties: JSON.stringify(props),
     };
   } catch {
     return null;
