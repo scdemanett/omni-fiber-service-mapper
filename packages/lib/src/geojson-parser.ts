@@ -1,6 +1,6 @@
 /**
  * GeoJSON Parser - Handles both FeatureCollection and line-delimited GeoJSON
- * from OpenAddress.io
+ * from OpenAddresses.io
  */
 
 export interface GeoJSONFeature {
@@ -121,7 +121,7 @@ export function* parseGeoJSONContent(content: string): Generator<GeoJSONFeature>
     }
   }
 
-  // Parse as line-delimited GeoJSON (OpenAddress.io format)
+  // Parse as line-delimited GeoJSON (OpenAddresses.io format)
   const lines = content.split('\n');
   
   for (const line of lines) {
