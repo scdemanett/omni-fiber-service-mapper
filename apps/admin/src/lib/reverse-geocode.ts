@@ -12,6 +12,12 @@ export interface ReverseGeocodeResult {
   postcode: string | null;
 }
 
+function normalizeField(value: string | null | undefined) {
+  if (!value) return null;
+  const normalized = value.trim().replace(/\s+/g, ' ').toUpperCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
 function snapCoord(n: number) {
   return Math.round(n * 10000) / 10000;
 }
@@ -59,16 +65,17 @@ export async function reverseGeocode(
     const addr = data.address ?? {};
 
     const result: ReverseGeocodeResult = {
-      city:
+      city: normalizeField(
         addr.city ??
-        addr.town ??
-        addr.village ??
-        addr.hamlet ??
-        addr.suburb ??
-        addr.municipality ??   // Ohio/Midwest civil townships (e.g. "Concord Township")
-        addr.county ??         // last resort — broad but better than nothing
-        null,
-      postcode: addr.postcode ?? null,
+          addr.town ??
+          addr.village ??
+          addr.hamlet ??
+          addr.suburb ??
+          addr.municipality ?? // Ohio/Midwest civil townships (e.g. "Concord Township")
+          addr.county ?? // last resort — broad but better than nothing
+          null,
+      ),
+      postcode: normalizeField(addr.postcode ?? null),
     };
 
     cache.set(key, result);
