@@ -7,8 +7,26 @@
   "exports": {
     ".": "./src/index.ts",
     "./components/service-map": "./src/components/service-map.tsx",
+    "./components/map-page": "./src/components/map-page.tsx",
     "./lib/polling-context": "./src/lib/polling-context.tsx",
     "./lib/selection-context": "./src/lib/selection-context.tsx"
+  },
+  "peerDependencies": {
+    "@fsm/lib": "*",
+    "@radix-ui/react-checkbox": ">=1",
+    "@radix-ui/react-label": ">=1",
+    "@radix-ui/react-select": ">=2",
+    "@radix-ui/react-slider": ">=1",
+    "@radix-ui/react-slot": ">=1",
+    "@radix-ui/react-switch": ">=1",
+    "class-variance-authority": ">=0.7",
+    "clsx": ">=2",
+    "date-fns": ">=4",
+    "lucide-react": ">=0.5",
+    "next": ">=15",
+    "react": ">=19",
+    "sonner": ">=2",
+    "tailwind-merge": ">=3"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

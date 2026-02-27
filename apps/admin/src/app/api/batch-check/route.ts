@@ -89,14 +89,13 @@ async function handleStart(selectionId: string, name: string, recheckType?: 'unc
   const recheckMode = recheckType || 'unchecked';
   
   if (recheckMode === 'preorder') {
-    const preorderAddresses = await getAddressesByServiceabilityType(selectionId, 'preorder');
+    const preorderAddresses = await getAddressesByServiceabilityType(selectionId, 'preorder', provider);
     addresses = preorderAddresses.map(a => ({ id: a.id }));
   } else if (recheckMode === 'noservice') {
-    const noServiceAddresses = await getAddressesByServiceabilityType(selectionId, 'none');
+    const noServiceAddresses = await getAddressesByServiceabilityType(selectionId, 'none', provider);
     addresses = noServiceAddresses.map(a => ({ id: a.id }));
   } else if (recheckMode === 'errors') {
-    // Use the new DB-level error filtering instead of loading all + filtering in memory
-    const errorAddresses = await getAddressesWithErrors(selectionId);
+    const errorAddresses = await getAddressesWithErrors(selectionId, provider);
     addresses = errorAddresses.map(a => ({ id: a.id }));
   } else if (recheckMode === 'all') {
     addresses = await prisma.address.findMany({
@@ -106,11 +105,11 @@ async function handleStart(selectionId: string, name: string, recheckType?: 'unc
       select: { id: true },
     });
   } else {
-    // Default: only unchecked addresses
+    // Default: only addresses never checked by this specific provider
     addresses = await prisma.address.findMany({
       where: {
         selections: { some: { id: selectionId } },
-        checks: { none: {} },
+        checks: { none: { provider } },
       },
       select: { id: true },
     });
@@ -131,7 +130,7 @@ async function handleStart(selectionId: string, name: string, recheckType?: 'unc
   }
 
   // Create batch job with descriptive name
-  const jobName = name || `${recheckMode === 'preorder' ? 'Re-check Preorder' : recheckMode === 'noservice' ? 'Re-check No Service' : recheckMode === 'errors' ? 'Re-check Errors' : recheckMode === 'all' ? 'Re-check All' : 'Check Unchecked'} - ${new Date().toLocaleString()}`;
+  const jobName = name || `${recheckMode === 'preorder' ? 'Re-check Preorder' : recheckMode === 'noservice' ? 'Re-check No Fiber Service' : recheckMode === 'errors' ? 'Re-check Errors' : recheckMode === 'all' ? 'Re-check All' : 'Check Unchecked'} - ${new Date().toLocaleString()}`;
   
   const job = await createBatchJob(
     jobName,
@@ -298,11 +297,11 @@ async function processBatch(jobId: string, selectionId: string, provider: string
   const recheckType = job.recheckType || 'unchecked';
   
   if (recheckType === 'preorder') {
-    addresses = await getAddressesByServiceabilityType(selectionId, 'preorder');
+    addresses = await getAddressesByServiceabilityType(selectionId, 'preorder', provider);
   } else if (recheckType === 'noservice') {
-    addresses = await getAddressesByServiceabilityType(selectionId, 'none');
+    addresses = await getAddressesByServiceabilityType(selectionId, 'none', provider);
   } else if (recheckType === 'errors') {
-    addresses = await getAddressesWithErrors(selectionId);
+    addresses = await getAddressesWithErrors(selectionId, provider);
   } else if (recheckType === 'all') {
     addresses = await prisma.address.findMany({
       where: {
@@ -315,11 +314,11 @@ async function processBatch(jobId: string, selectionId: string, provider: string
       orderBy: { id: 'asc' },
     });
   } else {
-    // Default: only unchecked addresses
+    // Default: only addresses never checked by this specific provider
     addresses = await prisma.address.findMany({
       where: {
         selections: { some: { id: selectionId } },
-        checks: { none: {} },
+        checks: { none: { provider } },
       },
       select: {
         id: true,
@@ -331,7 +330,7 @@ async function processBatch(jobId: string, selectionId: string, provider: string
 
   console.log(`Found ${addresses.length} addresses to check (mode: ${recheckType})`);
 
-  // Rate-limited scheduler: start a new API request every DELAY_MS (start-to-start),
+  // Rate-limited scheduler: start a new API request every PROVIDER_DELAY_MS (start-to-start),
   // while allowing a small amount of concurrency so long requests don't stall throughput.
   const inFlight = new Set<Promise<void>>();
   let lastStartAt = 0;
@@ -360,8 +359,16 @@ async function processBatch(jobId: string, selectionId: string, provider: string
     return true;
   };
 
-  // Resolve provider config once for the whole batch
+  // Resolve provider config once for the whole batch.
+  // Provider-level rateLimit settings take precedence over env defaults so
+  // sensitive APIs (e.g. Kinetic) can be throttled without touching global config.
   const providerConfig = getProvider(provider);
+  const PROVIDER_DELAY_MS = providerConfig.rateLimit?.delayMs ?? DELAY_MS;
+  const PROVIDER_MAX_IN_FLIGHT = providerConfig.rateLimit?.maxInFlight ?? MAX_IN_FLIGHT;
+
+  console.log(
+    `Batch rate limits for ${providerConfig.name}: delayMs=${PROVIDER_DELAY_MS}, maxInFlight=${PROVIDER_MAX_IN_FLIGHT}`
+  );
 
   const runOne = async (address: { id: string; addressString: string }, i: number) => {
     const started = Date.now();
@@ -411,13 +418,13 @@ async function processBatch(jobId: string, selectionId: string, provider: string
     const runnable = await checkJobStillRunnable();
     if (!runnable) return;
 
-    if (inFlight.size >= Math.max(1, MAX_IN_FLIGHT)) {
+    if (inFlight.size >= Math.max(1, PROVIDER_MAX_IN_FLIGHT)) {
       await awaitAny();
       continue;
     }
 
     const now = Date.now();
-    const nextStartAt = lastStartAt ? lastStartAt + Math.max(0, DELAY_MS) : now;
+    const nextStartAt = lastStartAt ? lastStartAt + Math.max(0, PROVIDER_DELAY_MS) : now;
     const waitMs = Math.max(0, nextStartAt - now);
     if (waitMs > 0) {
       await sleep(waitMs);

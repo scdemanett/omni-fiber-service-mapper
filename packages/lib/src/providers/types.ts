@@ -13,8 +13,8 @@ export interface ProviderConfig {
   /** Human-readable display name shown in UI, e.g. "Omni Fiber". */
   name: string;
 
-  /** URL for users at addresses with no current service to register interest. */
-  futureServiceUrl: string;
+  /** URL for users at addresses with no current service to register interest. Omit if the provider has no such form. */
+  futureServiceUrl?: string;
 
   /**
    * Referral / order link. Optional — set from env at runtime so the URL
@@ -24,6 +24,19 @@ export interface ProviderConfig {
 
   /** Whether this provider is a placeholder stub (not yet implemented). */
   isStub?: boolean;
+
+  /**
+   * Optional per-provider rate-limit overrides for the batch processor.
+   * Values here take precedence over the BATCH_DELAY_MS / BATCH_MAX_IN_FLIGHT
+   * environment variables so aggressive providers can stay fast while
+   * sensitive APIs are kept polite without touching global config.
+   */
+  rateLimit?: {
+    /** Minimum ms between request starts (start-to-start). */
+    delayMs?: number;
+    /** Maximum concurrent in-flight API requests. */
+    maxInFlight?: number;
+  };
 
   /** Fetch raw serviceability data from the provider API for a given address. Returns null on failure. */
   fetch: (address: string) => Promise<unknown | null>;

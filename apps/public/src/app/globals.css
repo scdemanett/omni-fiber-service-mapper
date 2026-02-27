@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Explicitly source monorepo packages so Tailwind v4 scans them for utility classes
+   (e.g. z-[1000], h-[60px], backdrop-blur used in packages/ui map components). */
+@source "../../../../packages/ui/src/**/*.{ts,tsx}";
+@source "../../../../packages/lib/src/**/*.{ts,tsx}";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -215,7 +220,7 @@
 
 /* Leaflet popup content styles — defined here so they are never purged by Tailwind */
 .popup-content {
-  min-width: 200px;
+  min-width: 240px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -223,6 +228,89 @@
 
 .popup-title {
   font-weight: 600;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+/* Provider grid — one compact row per ISP, scales to 4-5 providers */
+.popup-provider-grid {
+  display: flex;
+  flex-direction: column;
+  margin-top: 2px;
+}
+
+.popup-provider-row {
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.popup-provider-row + .popup-provider-row {
+  border-top: 1px solid #e5e7eb;
+}
+
+.popup-provider-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.popup-provider-row-name {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #374151;
+  flex-shrink: 0;
+}
+
+.popup-provider-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.popup-status-chip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.popup-status-chip-green  { background: #dcfce7; color: #166534; }
+.popup-status-chip-yellow { background: #fef9c3; color: #854d0e; }
+.popup-status-chip-red    { background: #fee2e2; color: #991b1b; }
+.popup-status-chip-gray   { background: #f3f4f6; color: #6b7280; }
+
+.popup-provider-row-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 2px;
+}
+
+.popup-action-link {
+  font-size: 12px;
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.popup-check-time {
+  font-size: 11px;
+  color: #9ca3af;
 }
 
 .popup-badge {

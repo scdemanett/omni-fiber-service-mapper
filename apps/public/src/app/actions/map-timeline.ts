@@ -83,7 +83,7 @@ export async function getAddressesAtTime(
     INNER JOIN "_AddressToAddressSelection" atas
       ON a.id = atas."A" AND atas."B" = ${selectionId}
     LEFT JOIN LATERAL (
-      SELECT
+      SELECT DISTINCT ON (sc.provider)
         sc.provider,
         sc."serviceabilityType",
         sc.serviceable,
@@ -100,8 +100,7 @@ export async function getAddressesAtTime(
       WHERE sc."addressId" = a.id
         AND COALESCE(sc."apiUpdateDate", sc."apiCreateDate", sc."checkedAt") <= ${asOfDate}
         AND (sc.error IS NULL OR sc.error = '')
-      ORDER BY sc."checkedAt" DESC
-      LIMIT 1
+      ORDER BY sc.provider, sc."checkedAt" DESC
     ) lc ON true
   `;
 
@@ -109,12 +108,10 @@ export async function getAddressesAtTime(
 }
 
 /**
- * Get all addresses for a selection with their current (latest) serviceability status.
+ * Get all addresses for a selection with their current (latest) serviceability status,
+ * returning one row per (address, provider) so all providers are visible on the map.
  * Fetches only the fields needed for map rendering — excludes the large `properties`
  * JSON blob and all other unused address columns that Prisma would otherwise load.
- *
- * Uses a LATERAL JOIN so each address gets exactly one check row from the DB,
- * with no data serialised or transferred that the map doesn't display.
  */
 export async function getAddressesForMap(selectionId: string): Promise<AddressAtTime[]> {
   return prisma.$queryRaw<AddressAtTime[]>`
@@ -142,7 +139,7 @@ export async function getAddressesForMap(selectionId: string): Promise<AddressAt
     INNER JOIN "_AddressToAddressSelection" atas
       ON a.id = atas."A" AND atas."B" = ${selectionId}
     LEFT JOIN LATERAL (
-      SELECT
+      SELECT DISTINCT ON (sc.provider)
         sc.provider,
         sc."serviceabilityType",
         sc.serviceable,
@@ -158,8 +155,7 @@ export async function getAddressesForMap(selectionId: string): Promise<AddressAt
       FROM serviceability_checks sc
       WHERE sc."addressId" = a.id
         AND (sc.error IS NULL OR sc.error = '')
-      ORDER BY sc."checkedAt" DESC
-      LIMIT 1
+      ORDER BY sc.provider, sc."checkedAt" DESC
     ) lc ON true
   `;
 }

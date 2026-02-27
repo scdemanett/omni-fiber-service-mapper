@@ -747,7 +747,7 @@ function SelectionsContent() {
                         </span>
                       </div>
                       <span className="text-[10px] uppercase text-muted-foreground">
-                        No Service
+                        No Fiber Service
                       </span>
                     </div>
                     <div className="rounded-lg bg-unchecked/10 p-2">

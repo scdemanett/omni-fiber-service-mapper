@@ -38,8 +38,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getSelections } from '@/app/actions/selections';
-import { getRunsForSelection, deleteRun, type RunSummary } from '@/app/actions/map-timeline';
-import { ACTIVE_PROVIDER_UI_METADATA } from '@fsm/lib/providers/ui';
+import { getRunsForSelection, deleteRun, type RunSummary } from '@/app/actions/runs';
+import { ACTIVE_PROVIDER_UI_METADATA, getProviderUIMeta, getProviderBadgeStyle } from '@fsm/lib/providers/ui';
 import { format } from 'date-fns';
 import { Suspense } from 'react';
 import { usePolling } from '@/lib/polling-context';
@@ -101,10 +101,14 @@ function CheckerContent() {
   const [isSwitching, setIsSwitching] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // True while stats are being re-fetched after a provider change — blocks Start
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [recheckType, setRecheckType] = useState<'unchecked' | 'preorder' | 'noservice' | 'errors' | 'all'>('unchecked');
   const [selectedProvider, setSelectedProvider] = useState<string>(ACTIVE_PROVIDER_UI_METADATA[0]?.id ?? 'omni-fiber');
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  // Ref so the polling closure always reads the latest provider without restarting
+  const selectedProviderRef = useRef(selectedProvider);
 
   // Manage runs dialog state
   const [runsDialogOpen, setRunsDialogOpen] = useState(false);
@@ -113,9 +117,15 @@ function CheckerContent() {
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const loadSelections = useCallback(async () => {
+  // Keep the ref in sync so the polling closure always has the latest provider
+  useEffect(() => {
+    selectedProviderRef.current = selectedProvider;
+  }, [selectedProvider]);
+
+  // Takes an explicit provider so callers are never stale
+  const loadSelections = useCallback(async (provider: string) => {
     try {
-      const data = await getSelections();
+      const data = await getSelections(provider);
       setSelections(data as Selection[]);
     } catch (error) {
       console.error('Error loading selections:', error);
@@ -138,10 +148,17 @@ function CheckerContent() {
     }
   }, []); // No dependencies - only load jobs on mount and when explicitly called
 
+  // Load jobs once on mount
   useEffect(() => {
-    loadSelections();
     loadJobs();
-  }, [loadSelections, loadJobs]);
+  }, [loadJobs]);
+
+  // Reload selections (with provider-scoped stats) on mount and whenever provider changes.
+  // isLoadingStats blocks the Start button while the fresh counts are in flight.
+  useEffect(() => {
+    setIsLoadingStats(true);
+    loadSelections(selectedProvider).finally(() => setIsLoadingStats(false));
+  }, [loadSelections, selectedProvider]);
 
   useEffect(() => {
     if (preselectedId) {
@@ -207,7 +224,7 @@ function CheckerContent() {
               );
             }
             // Refresh selections during polling to update overall stats
-            await loadSelections();
+            await loadSelections(selectedProviderRef.current);
             if (cancelled) return;
             
             // Stop polling when job is completed, cancelled, or failed
@@ -223,7 +240,7 @@ function CheckerContent() {
               // Show refreshing state while updating data
               setIsRefreshing(true);
               // Refresh both in parallel and wait for both to complete
-              await Promise.all([loadSelections(), loadJobs()]);
+              await Promise.all([loadSelections(selectedProviderRef.current), loadJobs()]);
               setIsRefreshing(false);
             } else {
               // Schedule next poll only if job is still running/pending
@@ -353,7 +370,7 @@ function CheckerContent() {
         if (pollingRef.current) {
           clearInterval(pollingRef.current);
         }
-        loadSelections();
+        loadSelections(selectedProviderRef.current);
         loadJobs();
       } else {
         toast.error(data.error || 'Failed to cancel');
@@ -408,7 +425,7 @@ function CheckerContent() {
       await deleteRun(runId);
       setRuns((prev) => prev.filter((r) => r.id !== runId));
       toast.success('Run deleted');
-      await loadSelections();
+      await loadSelections(selectedProviderRef.current);
     } catch (error) {
       console.error('Error deleting run:', error);
       toast.error('Failed to delete run');
@@ -504,9 +521,36 @@ function CheckerContent() {
                     </Select>
                   </div>
 
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Provider</label>
+                    <Select value={selectedProvider} onValueChange={setSelectedProvider} disabled={!!isJobActive}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ACTIVE_PROVIDER_UI_METADATA.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
               {selectedSelection && (
                 <div className="space-y-4">
-                  <div className="rounded-lg bg-muted p-4 space-y-2">
+                  <div className="relative rounded-lg bg-muted p-4 space-y-2">
+                    {isLoadingStats && (
+                      <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-muted/80 backdrop-blur-[1px] z-10">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      </div>
+                    )}
+                    <div className="flex justify-between text-xs text-muted-foreground pb-1 border-b border-border/50">
+                      <span>Stats for</span>
+                      <span className="font-medium">
+                        {ACTIVE_PROVIDER_UI_METADATA.find((p) => p.id === selectedProvider)?.name ?? selectedProvider}
+                      </span>
+                    </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Total addresses</span>
                       <span className="font-medium">
@@ -532,7 +576,7 @@ function CheckerContent() {
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">No Service</span>
+                      <span className="text-muted-foreground">No Fiber Service</span>
                       <span className="font-medium text-no-service">
                         {selectedSelection.noServiceCount.toLocaleString()}
                       </span>
@@ -540,24 +584,8 @@ function CheckerContent() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Provider</label>
-                    <Select value={selectedProvider} onValueChange={setSelectedProvider} disabled={!!isJobActive}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ACTIVE_PROVIDER_UI_METADATA.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
                     <label className="text-sm font-medium">Check Mode</label>
-                    <Select value={recheckType} onValueChange={(value: 'unchecked' | 'preorder' | 'noservice' | 'errors' | 'all') => setRecheckType(value)} disabled={!!isJobActive}>
+                    <Select value={recheckType} onValueChange={(value: 'unchecked' | 'preorder' | 'noservice' | 'errors' | 'all') => setRecheckType(value)} disabled={!!isJobActive || isLoadingStats}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -569,7 +597,7 @@ function CheckerContent() {
                           Re-check Preorder ({selectedSelection.preorderCount})
                         </SelectItem>
                         <SelectItem value="noservice">
-                          Re-check No Service ({selectedSelection.noServiceCount})
+                          Re-check No Fiber Service ({selectedSelection.noServiceCount})
                         </SelectItem>
                         <SelectItem value="errors">
                           Re-check Errors ({selectedSelection.errorCount})
@@ -653,7 +681,7 @@ function CheckerContent() {
                   ) : (
                     <Button
                       onClick={handleStart}
-                      disabled={!selectedSelectionId || isStarting || isLoading || 
+                      disabled={!selectedSelectionId || isStarting || isLoading || isLoadingStats ||
                         (recheckType === 'unchecked' && selectedSelection?.uncheckedCount === 0) ||
                         (recheckType === 'preorder' && selectedSelection?.preorderCount === 0) ||
                         (recheckType === 'noservice' && selectedSelection?.noServiceCount === 0) ||
@@ -745,6 +773,11 @@ function CheckerContent() {
                             >
                               {run.status}
                             </Badge>
+                            {run.provider && (
+                              <Badge variant="outline" className="text-xs" style={getProviderBadgeStyle(getProviderUIMeta(run.provider))}>
+                                {getProviderUIMeta(run.provider)?.name ?? run.provider}
+                              </Badge>
+                            )}
                           </div>
                           <div className="mt-1 text-xs text-muted-foreground">
                             {run.startedAt ? format(new Date(run.startedAt), 'MMM d, yyyy h:mm a') : 'Unknown date'}
@@ -932,7 +965,7 @@ function CheckerContent() {
                     <div className="text-2xl font-bold text-no-service">
                       {currentJob.noServiceCount.toLocaleString()}
                     </div>
-                    <div className="text-xs uppercase text-muted-foreground">No Service</div>
+                    <div className="text-xs uppercase text-muted-foreground">No Fiber Service</div>
                   </div>
                   <div className="rounded-lg bg-muted p-3 text-center">
                     <div className="text-2xl font-bold text-unchecked">

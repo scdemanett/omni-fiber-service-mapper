@@ -94,7 +94,7 @@ Shared React components: `PollingProvider`, `SelectionProvider` context, and the
   - Scrub through historical snapshots
   - See exactly when addresses became serviceable
 - Filter by service type
-- Export to GeoJSON
+- Export to GeoJSON — includes provider attribution, all standard check fields, and per-provider status columns (e.g. `omni_fiber_serviceabilityType`, `kinetic_serviceabilityType`) for multi-provider campaigns
 
 ### ✅ Batch Serviceability Checking *(admin only)*
 - Check thousands of addresses automatically
@@ -266,7 +266,7 @@ Providers are registered in `packages/lib/src/providers/registry.ts`. The checke
 
 1. Create `packages/lib/src/providers/<slug>.ts` implementing `ProviderConfig`
 2. Register it in `registry.ts`
-3. Add its display metadata to `ui-metadata.ts`
+3. Add its display metadata to `ui-metadata.ts` — `name` is required; optionally set `color` (CSS color string) and `textColor` for brand-colored badges throughout the UI (dashboard, checker run history, map popups, and the map stats overlay)
 4. Run a batch job — the dashboard "Tracking:" indicator will appear automatically once data exists
 
 ### Omni Fiber API

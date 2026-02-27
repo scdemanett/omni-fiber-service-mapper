@@ -38,6 +38,7 @@ export interface DashboardStats {
     noServiceCount: number;
     createdAt: Date;
     selectionId: string | null;
+    provider: string | null;
   }[];
   hasActiveJobs: boolean;
   /** Provider ids that have at least one completed batch job with checks. */

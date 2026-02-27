@@ -19,7 +19,7 @@ import {
   XCircle,
   Radio,
 } from 'lucide-react';
-import { PROVIDER_UI_METADATA } from '@fsm/lib/providers/ui';
+import { PROVIDER_UI_METADATA, getProviderUIMeta, getProviderBadgeStyle } from '@fsm/lib/providers/ui';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -126,7 +126,7 @@ export default function Dashboard() {
                 <Radio className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs font-medium text-muted-foreground">Tracking:</span>
                 {PROVIDER_UI_METADATA.filter((p) => stats.activeProviderIds.includes(p.id)).map((p) => (
-                  <Badge key={p.id} variant="secondary" className="text-xs">
+                  <Badge key={p.id} variant="secondary" className="text-xs" style={getProviderBadgeStyle(p)}>
                     {p.name}
                   </Badge>
                 ))}
@@ -239,7 +239,7 @@ export default function Dashboard() {
                   <div className="text-2xl font-bold text-no-service">
                     {stats.noServiceChecks.toLocaleString()}
                   </div>
-                  <div className="text-xs text-muted-foreground">No Service</div>
+                  <div className="text-xs text-muted-foreground">No Fiber Service</div>
                 </div>
               </div>
             </CardContent>
@@ -464,21 +464,28 @@ export default function Dashboard() {
                           </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <Badge
-                          variant={
-                            job.status === 'completed'
-                              ? 'outline'
-                              : job.status === 'running'
-                              ? 'default'
-                              : job.status === 'pending'
-                              ? 'secondary'
-                              : 'secondary'
-                          }
-                        >
-                          {job.status}
-                        </Badge>
-                        <div className="mt-1 text-xs text-muted-foreground">
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="flex items-center gap-1.5">
+                          {job.provider && (
+                            <Badge variant="secondary" className="text-xs" style={getProviderBadgeStyle(getProviderUIMeta(job.provider))}>
+                              {getProviderUIMeta(job.provider)?.name ?? job.provider}
+                            </Badge>
+                          )}
+                          <Badge
+                            variant={
+                              job.status === 'completed'
+                                ? 'outline'
+                                : job.status === 'running'
+                                ? 'default'
+                                : job.status === 'pending'
+                                ? 'secondary'
+                                : 'secondary'
+                            }
+                          >
+                            {job.status}
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
                           {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
                         </div>
                       </div>

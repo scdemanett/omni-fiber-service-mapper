@@ -75,9 +75,11 @@ export async function createSelection(
 
 /**
  * Get all selections with address counts and serviceability stats.
- * Uses a single CTE + DISTINCT ON query for all selections (replaces 5*N sequential queries).
+ * When `provider` is supplied the stats reflect only that provider's checks,
+ * so "Unchecked" correctly shows addresses that have never been checked by
+ * that provider rather than the cross-provider aggregate.
  */
-export async function getSelections() {
+export async function getSelections(provider?: string) {
   const selections = await prisma.addressSelection.findMany({
     orderBy: { createdAt: 'desc' },
     include: {
@@ -87,35 +89,67 @@ export async function getSelections() {
     },
   });
 
-  // Single query computes stats for ALL selections at once
-  const selectionStatsRows = await prisma.$queryRaw<{
-    selectionId: string;
-    checkedCount: bigint;
-    serviceableCount: bigint;
-    preorderCount: bigint;
-    noServiceCount: bigint;
-    errorCount: bigint;
-  }[]>`
-    WITH latest_checks AS (
-      SELECT DISTINCT ON ("addressId")
-        "addressId",
-        "serviceabilityType",
-        error
-      FROM serviceability_checks
-      ORDER BY "addressId", "checkedAt" DESC
-    )
-    SELECT
-      atas."B" as "selectionId",
-      COUNT(DISTINCT CASE WHEN lc."addressId" IS NOT NULL THEN a.id END) as "checkedCount",
-      COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'serviceable' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "serviceableCount",
-      COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'preorder' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "preorderCount",
-      COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'none' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "noServiceCount",
-      COUNT(DISTINCT CASE WHEN lc.error IS NOT NULL AND lc.error != '' THEN a.id END) as "errorCount"
-    FROM addresses a
-    INNER JOIN "_AddressToAddressSelection" atas ON a.id = atas."A"
-    LEFT JOIN latest_checks lc ON a.id = lc."addressId"
-    GROUP BY atas."B"
-  `;
+  // Single CTE computes stats for ALL selections at once.
+  // When a provider is given, scope to only that provider's checks so the
+  // "Unchecked" count reflects addresses never checked by that provider.
+  const selectionStatsRows = provider
+    ? await prisma.$queryRaw<{
+        selectionId: string;
+        checkedCount: bigint;
+        serviceableCount: bigint;
+        preorderCount: bigint;
+        noServiceCount: bigint;
+        errorCount: bigint;
+      }[]>`
+        WITH latest_checks AS (
+          SELECT DISTINCT ON ("addressId")
+            "addressId",
+            "serviceabilityType",
+            error
+          FROM serviceability_checks
+          WHERE provider = ${provider}
+          ORDER BY "addressId", "checkedAt" DESC
+        )
+        SELECT
+          atas."B" as "selectionId",
+          COUNT(DISTINCT CASE WHEN lc."addressId" IS NOT NULL THEN a.id END) as "checkedCount",
+          COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'serviceable' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "serviceableCount",
+          COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'preorder' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "preorderCount",
+          COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'none' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "noServiceCount",
+          COUNT(DISTINCT CASE WHEN lc.error IS NOT NULL AND lc.error != '' THEN a.id END) as "errorCount"
+        FROM addresses a
+        INNER JOIN "_AddressToAddressSelection" atas ON a.id = atas."A"
+        LEFT JOIN latest_checks lc ON a.id = lc."addressId"
+        GROUP BY atas."B"
+      `
+    : await prisma.$queryRaw<{
+        selectionId: string;
+        checkedCount: bigint;
+        serviceableCount: bigint;
+        preorderCount: bigint;
+        noServiceCount: bigint;
+        errorCount: bigint;
+      }[]>`
+        WITH latest_checks AS (
+          SELECT DISTINCT ON ("addressId")
+            "addressId",
+            "serviceabilityType",
+            error
+          FROM serviceability_checks
+          ORDER BY "addressId", "checkedAt" DESC
+        )
+        SELECT
+          atas."B" as "selectionId",
+          COUNT(DISTINCT CASE WHEN lc."addressId" IS NOT NULL THEN a.id END) as "checkedCount",
+          COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'serviceable' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "serviceableCount",
+          COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'preorder' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "preorderCount",
+          COUNT(DISTINCT CASE WHEN lc."serviceabilityType" = 'none' AND (lc.error IS NULL OR lc.error = '') THEN a.id END) as "noServiceCount",
+          COUNT(DISTINCT CASE WHEN lc.error IS NOT NULL AND lc.error != '' THEN a.id END) as "errorCount"
+        FROM addresses a
+        INNER JOIN "_AddressToAddressSelection" atas ON a.id = atas."A"
+        LEFT JOIN latest_checks lc ON a.id = lc."addressId"
+        GROUP BY atas."B"
+      `;
 
   const statsMap = new Map(
     selectionStatsRows.map((row) => [row.selectionId, row])

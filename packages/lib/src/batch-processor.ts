@@ -178,11 +178,12 @@ export async function recordServiceabilityCheck(
 }
 
 /**
- * Get addresses for a selection that haven't been checked yet.
+ * Get addresses for a selection that haven't been checked yet by the given provider.
  * Uses Prisma's relational filter (no in-memory filtering).
  */
 export async function getUncheckedAddresses(
   selectionId: string,
+  provider: string = 'omni-fiber',
   limit?: number
 ): Promise<AddressToCheck[]> {
   const addresses = await prisma.address.findMany({
@@ -191,7 +192,7 @@ export async function getUncheckedAddresses(
         some: { id: selectionId },
       },
       checks: {
-        none: {},
+        none: { provider },
       },
     },
     select: {
@@ -245,12 +246,13 @@ export async function getNonServiceableAddresses(
 }
 
 /**
- * Get addresses from a selection by their serviceability type in the latest check.
- * Uses a PostgreSQL LATERAL JOIN to filter at the database level.
+ * Get addresses from a selection by their serviceability type in the latest check
+ * for the given provider. Uses a PostgreSQL LATERAL JOIN to filter at the database level.
  */
 export async function getAddressesByServiceabilityType(
   selectionId: string,
   serviceabilityType: 'serviceable' | 'preorder' | 'none',
+  provider: string = 'omni-fiber',
   limit?: number
 ): Promise<AddressToCheck[]> {
   if (limit != null) {
@@ -262,6 +264,7 @@ export async function getAddressesByServiceabilityType(
         SELECT "serviceabilityType"
         FROM serviceability_checks sc
         WHERE sc."addressId" = a.id
+          AND sc.provider = ${provider}
         ORDER BY sc."checkedAt" DESC
         LIMIT 1
       ) lc ON true
@@ -278,6 +281,7 @@ export async function getAddressesByServiceabilityType(
       SELECT "serviceabilityType"
       FROM serviceability_checks sc
       WHERE sc."addressId" = a.id
+        AND sc.provider = ${provider}
       ORDER BY sc."checkedAt" DESC
       LIMIT 1
     ) lc ON true
@@ -286,11 +290,12 @@ export async function getAddressesByServiceabilityType(
 }
 
 /**
- * Get addresses from a selection whose latest check has an error.
+ * Get addresses from a selection whose latest check for the given provider has an error.
  * Uses a PostgreSQL LATERAL JOIN to filter at the database level.
  */
 export async function getAddressesWithErrors(
   selectionId: string,
+  provider: string = 'omni-fiber',
   limit?: number
 ): Promise<AddressToCheck[]> {
   if (limit != null) {
@@ -302,6 +307,7 @@ export async function getAddressesWithErrors(
         SELECT error
         FROM serviceability_checks sc
         WHERE sc."addressId" = a.id
+          AND sc.provider = ${provider}
         ORDER BY sc."checkedAt" DESC
         LIMIT 1
       ) lc ON true
@@ -318,6 +324,7 @@ export async function getAddressesWithErrors(
       SELECT error
       FROM serviceability_checks sc
       WHERE sc."addressId" = a.id
+        AND sc.provider = ${provider}
       ORDER BY sc."checkedAt" DESC
       LIMIT 1
     ) lc ON true

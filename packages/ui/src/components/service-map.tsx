@@ -15,8 +15,10 @@ import { formatDistanceToNow, format } from 'date-fns';
 export interface ServiceMapProvider {
   id: string;
   name: string;
-  futureServiceUrl: string;
+  futureServiceUrl?: string;
   referralUrl?: string;
+  color?: string;
+  textColor?: string;
 }
 
 interface AddressWithCheck {
@@ -71,12 +73,16 @@ function FitBounds({ addresses }: { addresses: AddressWithCheck[] }) {
   return null;
 }
 
+/** Best-status-wins: serviceable > preorder > none > unchecked */
+function getEffectiveStatus(checks: AddressWithCheck['checks']): string | null {
+  if (checks.length === 0) return null;
+  if (checks.some((c) => c.serviceabilityType === 'serviceable')) return 'serviceable';
+  if (checks.some((c) => c.serviceabilityType === 'preorder')) return 'preorder';
+  return 'none';
+}
+
 export default function ServiceMap({ addresses, providers, clusteringOptions }: ServiceMapProps) {
   const mapRef = useRef(null);
-
-  // Primary provider drives the popup links for Phase 1 (single-provider).
-  // Phase 2 will loop over providers per address check.
-  const primaryProvider = providers[0];
 
   const clusterConfig = {
     maxClusterRadius: clusteringOptions?.maxClusterRadius ?? 80,
@@ -94,43 +100,108 @@ export default function ServiceMap({ addresses, providers, clusteringOptions }: 
     const unchecked: AddressWithCheck[] = [];
 
     for (const addr of addresses) {
-      const check = addr.checks[0];
-      if (!check) {
-        unchecked.push(addr);
-      } else {
-        const type = check.serviceabilityType;
-        if (type === 'serviceable') serviceable.push(addr);
-        else if (type === 'preorder') preorder.push(addr);
-        else noService.push(addr);
-      }
+      const status = getEffectiveStatus(addr.checks);
+      if (status === null) unchecked.push(addr);
+      else if (status === 'serviceable') serviceable.push(addr);
+      else if (status === 'preorder') preorder.push(addr);
+      else noService.push(addr);
     }
 
     return { serviceable, preorder, noService, unchecked };
   }, [addresses]);
 
+  /**
+   * Set of provider IDs that have been run for this campaign — derived from
+   * which providers appear in any check across all loaded addresses.
+   * Providers with zero checks (never started for this campaign) are hidden
+   * from popups entirely rather than showing as permanently "Pending".
+   */
+  const runProviderIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const addr of addresses) {
+      for (const check of addr.checks) {
+        ids.add(check.provider);
+      }
+    }
+    return ids;
+  }, [addresses]);
+
   const defaultCenter: [number, number] = [41.5, -81.5];
   const defaultZoom = 10;
 
-  /** Render the date-stamp rows at the bottom of every popup. */
-  const renderCheckMeta = (check: AddressWithCheck['checks'][0]) => (
-    <div className="popup-meta">
-      {check.apiCreateDate && (
-        <div className="popup-meta-item">
-          Created {format(new Date(check.apiCreateDate), 'MM/dd/yyyy')} (
-          {formatDistanceToNow(new Date(check.apiCreateDate), { addSuffix: true })})
+  /**
+   * Compact provider-grid popup — one row per provider that has been run for
+   * this campaign. Providers with no checks at all (never started) are hidden.
+   * Addresses within a started run that haven't been reached yet show "Pending".
+   */
+  const renderPopup = (addr: AddressWithCheck) => (
+    <Popup>
+      <div className="popup-content">
+        <div className="popup-title">{addr.addressString}</div>
+        <div className="popup-provider-grid">
+          {providers.filter((p) => runProviderIds.has(p.id)).map((p) => {
+            const check = addr.checks.find((c) => c.provider === p.id);
+            const isServiceable = check?.serviceabilityType === 'serviceable';
+            const isPreorder = check?.serviceabilityType === 'preorder';
+            const isNoService = !!check && !isServiceable && !isPreorder;
+
+            return (
+              <div key={p.id} className="popup-provider-row">
+                {/* Name + colon in JSX — avoids relying on flex gap alone for
+                    separation inside the Leaflet popup shadow DOM. */}
+                <div className="popup-provider-row-header">
+                  <span
+                    className="popup-provider-badge"
+                    style={p.color ? { backgroundColor: p.color, color: p.textColor ?? '#fff', borderColor: p.color } : undefined}
+                  >
+                    {p.name}
+                  </span>
+                  {!check && (
+                    <span className="popup-status-chip popup-status-chip-gray">Pending</span>
+                  )}
+                  {isServiceable && (
+                    <span className="popup-status-chip popup-status-chip-green">Available</span>
+                  )}
+                  {isPreorder && (
+                    <span className="popup-status-chip popup-status-chip-yellow">Preorder</span>
+                  )}
+                  {isNoService && (
+                    <span className="popup-status-chip popup-status-chip-red">No Service</span>
+                  )}
+                </div>
+
+                {check && (
+                  <div className="popup-provider-row-detail">
+                    {(isServiceable || isPreorder) && p.referralUrl && (
+                      <>
+                        <a href={p.referralUrl} target="_blank" rel="noopener noreferrer" className="popup-action-link">
+                          Order Service ↗
+                        </a>
+                        <div className="popup-referral-note">Referral link — we both get $50 gift cards!</div>
+                      </>
+                    )}
+                    {isNoService && p.futureServiceUrl && (
+                      <a href={p.futureServiceUrl} target="_blank" rel="noopener noreferrer" className="popup-action-link">
+                        Request Future Service ↗
+                      </a>
+                    )}
+                    <div className="popup-check-time">
+                      {check.apiCreateDate && (
+                        <>Created {format(new Date(check.apiCreateDate), 'M/d/yy')} · </>
+                      )}
+                      {check.apiUpdateDate && (
+                        <>Updated {format(new Date(check.apiUpdateDate), 'M/d/yy')} · </>
+                      )}
+                      Checked {formatDistanceToNow(new Date(check.checkedAt), { addSuffix: true })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      )}
-      {check.apiUpdateDate && (
-        <div className="popup-meta-item">
-          Updated {format(new Date(check.apiUpdateDate), 'MM/dd/yyyy')} (
-          {formatDistanceToNow(new Date(check.apiUpdateDate), { addSuffix: true })})
-        </div>
-      )}
-      <div className="popup-meta-item">
-        Checked {format(new Date(check.checkedAt), 'MM/dd/yyyy')} (
-        {formatDistanceToNow(new Date(check.checkedAt), { addSuffix: true })})
       </div>
-    </div>
+    </Popup>
   );
 
   return (
@@ -172,12 +243,7 @@ export default function ServiceMap({ addresses, providers, clusteringOptions }: 
               weight: 1,
             }}
           >
-            <Popup>
-              <div className="popup-content">
-                <div className="popup-title">{addr.addressString}</div>
-                <div className="popup-badge popup-badge-gray">Not checked yet</div>
-              </div>
-            </Popup>
+            {renderPopup(addr)}
           </CircleMarker>
         ))}
       </MarkerClusterGroup>
@@ -206,26 +272,7 @@ export default function ServiceMap({ addresses, providers, clusteringOptions }: 
               weight: 1,
             }}
           >
-            <Popup>
-              <div className="popup-content">
-                <div className="popup-title">{addr.addressString}</div>
-                {primaryProvider && (
-                  <div className="popup-provider-label">{primaryProvider.name}</div>
-                )}
-                <div className="popup-badge popup-badge-red">No Service Available</div>
-                {primaryProvider && (
-                  <a
-                    href={primaryProvider.futureServiceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="popup-link"
-                  >
-                    Request Future Service
-                  </a>
-                )}
-                {addr.checks[0] && renderCheckMeta(addr.checks[0])}
-              </div>
-            </Popup>
+            {renderPopup(addr)}
           </CircleMarker>
         ))}
       </MarkerClusterGroup>
@@ -254,31 +301,7 @@ export default function ServiceMap({ addresses, providers, clusteringOptions }: 
               weight: 1,
             }}
           >
-            <Popup>
-              <div className="popup-content">
-                <div className="popup-title">{addr.addressString}</div>
-                {primaryProvider && (
-                  <div className="popup-provider-label">{primaryProvider.name}</div>
-                )}
-                <div className="popup-badge popup-badge-yellow">Preorder / Planned Service</div>
-                {primaryProvider?.referralUrl && (
-                  <>
-                    <a
-                      href={primaryProvider.referralUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="popup-link"
-                    >
-                      Order Service
-                    </a>
-                    <div className="popup-referral-note">
-                      Referral link - We both get $50 gift cards!
-                    </div>
-                  </>
-                )}
-                {addr.checks[0] && renderCheckMeta(addr.checks[0])}
-              </div>
-            </Popup>
+            {renderPopup(addr)}
           </CircleMarker>
         ))}
       </MarkerClusterGroup>
@@ -307,31 +330,7 @@ export default function ServiceMap({ addresses, providers, clusteringOptions }: 
               weight: 2,
             }}
           >
-            <Popup>
-              <div className="popup-content">
-                <div className="popup-title">{addr.addressString}</div>
-                {primaryProvider && (
-                  <div className="popup-provider-label">{primaryProvider.name}</div>
-                )}
-                <div className="popup-badge popup-badge-green">Serviceable</div>
-                {primaryProvider?.referralUrl && (
-                  <>
-                    <a
-                      href={primaryProvider.referralUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="popup-link"
-                    >
-                      Order Service
-                    </a>
-                    <div className="popup-referral-note">
-                      Referral link - We both get $50 gift cards!
-                    </div>
-                  </>
-                )}
-                {addr.checks[0] && renderCheckMeta(addr.checks[0])}
-              </div>
-            </Popup>
+            {renderPopup(addr)}
           </CircleMarker>
         ))}
       </MarkerClusterGroup>
