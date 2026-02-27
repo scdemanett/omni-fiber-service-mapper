@@ -117,6 +117,13 @@ function CheckerContent() {
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  // If a job is active, keep the provider synced to the job's provider
+  useEffect(() => {
+    if (currentJob?.provider && currentJob.provider !== selectedProvider) {
+      setSelectedProvider(currentJob.provider);
+    }
+  }, [currentJob?.provider, selectedProvider]);
+
   // Keep the ref in sync so the polling closure always has the latest provider
   useEffect(() => {
     selectedProviderRef.current = selectedProvider;
@@ -857,7 +864,7 @@ function CheckerContent() {
                             currentJob?.id === job.id ? 'border-primary bg-primary/5' : ''
                           }`}
                         >
-                          <div className="flex items-center gap-2 truncate">
+                        <div className="flex items-start gap-2">
                             {job.status === 'running' ? (
                               <Loader2 className="h-3 w-3 animate-spin text-primary" />
                             ) : job.status === 'completed' ? (
@@ -873,7 +880,7 @@ function CheckerContent() {
                             ) : (
                               <Clock className="h-3 w-3 text-muted-foreground" />
                             )}
-                            <span className="truncate">{displayName}</span>
+                            <span className="whitespace-normal break-words">{displayName}</span>
                           </div>
                           <Badge variant="outline" className="text-[10px]">
                             {job.status}
