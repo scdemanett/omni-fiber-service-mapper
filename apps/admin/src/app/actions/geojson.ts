@@ -90,17 +90,34 @@ export async function uploadGeoJSON(formData: FormData): Promise<UploadResult> {
 }
 
 /**
- * Get all GeoJSON sources
+ * Get all GeoJSON sources with a count of addresses missing city or postcode.
  */
 export async function getGeoJSONSources() {
-  return prisma.geoJSONSource.findMany({
-    orderBy: { uploadedAt: 'desc' },
-    include: {
-      _count: {
-        select: { addresses: true },
+  const [sources, missingRows] = await Promise.all([
+    prisma.geoJSONSource.findMany({
+      orderBy: { uploadedAt: 'desc' },
+      include: {
+        _count: {
+          select: { addresses: true },
+        },
       },
-    },
-  });
+    }),
+    prisma.$queryRaw<{ sourceId: string; missing: bigint }[]>`
+      SELECT "sourceId", COUNT(*) AS missing
+      FROM addresses
+      WHERE (city IS NULL OR city = '') OR (postcode IS NULL OR postcode = '')
+      GROUP BY "sourceId"
+    `,
+  ]);
+
+  const missingMap = new Map(
+    missingRows.map((r) => [r.sourceId, Number(r.missing)]),
+  );
+
+  return sources.map((s) => ({
+    ...s,
+    missingGeocodingCount: missingMap.get(s.id) ?? 0,
+  }));
 }
 
 /**

@@ -109,6 +109,15 @@ Shared React components: `PollingProvider`, `SelectionProvider` context, and the
 - Smart error handling (errors don't pollute data)
 - Rate-limited API calls
 
+### 📍 Geocoding Enrichment *(admin only)*
+Some address datasets (e.g. OpenAddresses rural exports) omit `city` and `postcode` fields. The enrichment pipeline fills these gaps automatically using reverse geocoding:
+- Resolves missing `city` and `postcode` from coordinates via the **Nominatim (OpenStreetMap)** API — free, no API key required
+- **Coordinate cache** snapped to ~11 m grid so thousands of addresses in the same ZIP area require only one API call
+- Rate-limited to 1 req/sec per OpenStreetMap policy; cache hits are near-instant
+- **Run at upload time** via an optional toggle on the Upload page
+- **Run on demand** for any existing source via the amber MapPin button — sources with gaps are clearly flagged
+- Also rebuilds the formatted address string so subsequent serviceability API calls include the resolved city and postcode
+
 ### 🎯 Address Selection & Management *(admin only)*
 - Upload GeoJSON files with address data
 - Create filtered selections by city, region, or postcode
@@ -222,7 +231,9 @@ PORT=3001
 - Select a GeoJSON file with address features
 - Properties should include: `number`, `street`, `city`, `region`, `postcode`
 - **Recommended Source**: [OpenAddresses.io](https://openaddresses.io/) provides free, open address data in compatible formats
+- Toggle **Resolve missing city & postcode** to automatically enrich addresses after upload (useful for rural datasets where these fields are often blank)
 - Upload and wait for processing
+- Sources with remaining gaps are flagged with an amber MapPin indicator — click it to run enrichment at any time
 
 ### 2. Create Selection *(admin app)*
 - Go to **Selections** page
