@@ -304,13 +304,16 @@
 
 .popup-action-link {
   font-size: 12px;
+  text-align: center;
   color: #2563eb;
   text-decoration: underline;
 }
 
 .popup-check-time {
   font-size: 11px;
+  text-align: center;
   color: #9ca3af;
+  margin-top: 8px;
 }
 
 .popup-badge {
