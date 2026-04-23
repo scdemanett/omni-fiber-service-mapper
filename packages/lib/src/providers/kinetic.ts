@@ -138,12 +138,40 @@ export interface KineticAddressSearchResponse {
 
 async function fetchAddressSearch(address: string): Promise<KineticAddressSearchResponse | null> {
   const parsed = parseAddress(address);
-  const body = JSON.stringify(parsed);
 
-  // Attempt the address search, retrying once on 403.
-  // Kinetic appears to impose a per-session quota: the first 403 is the signal
-  // to rotate the auth token. We clear the cache, pause briefly, then retry
-  // with a fresh token before giving up.
+  // Primary search using the parsed city.
+  const primary = await postAddressSearch(JSON.stringify(parsed));
+
+  // Many rural addresses come to us with a neighborhood / township as the city
+  // (e.g. "SOUTH DENMARK") while Kinetic's catalog keys them under the postal
+  // rate center (e.g. "DORSET"). A city mismatch is returned as
+  // AddressNeedsFix with no candidates. If we sent a city, retry once without
+  // one and let Kinetic match on street + state + ZIP.
+  if (
+    primary &&
+    primary.validationResult === 'AddressNeedsFix' &&
+    !primary.dfAddressId &&
+    parsed.city
+  ) {
+    const fallback = await postAddressSearch(
+      JSON.stringify({ ...parsed, city: '' })
+    );
+    if (fallback && fallback.dfAddressId) {
+      return fallback;
+    }
+  }
+
+  return primary;
+}
+
+/**
+ * Single Kinetic address/search POST with auth handling + one-shot 403 retry.
+ *
+ * Kinetic imposes a per-session quota: the first 403 is the signal to rotate
+ * the auth token. We clear the cache, pause briefly, then retry with a fresh
+ * token before giving up.
+ */
+async function postAddressSearch(body: string): Promise<KineticAddressSearchResponse | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const token = await getToken();
@@ -159,7 +187,6 @@ async function fetchAddressSearch(address: string): Promise<KineticAddressSearch
       const is403 = err instanceof Error && err.message.includes('HTTP 403');
 
       if (is403 && attempt === 0) {
-        // Force token rotation and wait before retrying.
         console.warn('[kinetic] 403 on address/search — rotating token and retrying in 10 s');
         cachedToken = null;
         tokenExpiresAt = 0;
